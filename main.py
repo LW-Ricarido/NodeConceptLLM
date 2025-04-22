@@ -141,8 +141,8 @@ def objective(args):
         output_dir=args.model_save_path,
         report_to='wandb',
         logging_dir=args.log_dir,
-        per_device_train_batch_size=2,
-        per_device_eval_batch_size=10,
+        per_device_train_batch_size=args.train_size,
+        per_device_eval_batch_size=args.eval_size,
         gradient_accumulation_steps=4,
         remove_unused_columns=False,
         fp16=False,
@@ -197,7 +197,7 @@ def sematic_measurement(eval_pred,compute_result):
         similarity = PLM.similarity_pairwise(p_embeds,i_embeds)
         similarity_average = similarity.mean().item()
         
-        if not_log_output and np.random.random() > 0.5 and global_ref.state.global_step % 10000 == 0:
+        if not_log_output and np.random.random() > 0.5 and global_ref.state.global_step % 5000 == 0:
             not_log_output = False
             table = wandb.Table(columns=['labels', 'generated'])
             for i in range(min(10, len(predictions_sentence))):
@@ -206,7 +206,7 @@ def sematic_measurement(eval_pred,compute_result):
             
             wandb.log({'eval_check/generated_examples':table},step=global_ref.state.global_step)
         if compute_result:
-            if not_log_output and global_ref.state.global_step % 10000 == 0:
+            if not_log_output and global_ref.state.global_step % 5000 == 0:
                 table = wandb.Table(columns=['labels', 'generated'])
                 for i in range(min(10, len(predictions_sentence))):
                 # check_idx = np.random.randint(0, len(input_sentence))
@@ -365,6 +365,16 @@ if __name__ == "__main__":
         '--run_name',
         type=str,
         required=True
+    )
+    parser.add_argument(
+        '--train_size',
+        type=int,
+        default=2
+    )
+    parser.add_argument(
+        '--eval_size',
+        type=int,
+        default=8
     )
     args = parser.parse_args()
     set_seed(42)

@@ -128,18 +128,20 @@ def objective(args):
         prompt_length = question_only.shape[0]
         labels[:prompt_length] = -100
         dp['labels'] = labels.tolist()
+        dp['length'] = len(dp['input_ids'])
         dp.pop('type')
         return dp
     with PartialState().local_main_process_first():
         train_dataset = train_dataset.map(chat_map,num_proc=16)
         test_dataset = test_dataset.map(chat_map)
     # print(test_dataset[0]['input_ids'])
+    max_seq_length = np.array(train_dataset['length']).max()
     if args.use_fp16:
         model = model.half()
     
     training_arguments = SFTConfig(
         output_dir=args.model_save_path,
-        report_to='wandb',
+        # report_to='wandb',
         logging_dir=args.log_dir,
         per_device_train_batch_size=args.train_size,
         per_device_eval_batch_size=args.eval_size,
@@ -164,6 +166,7 @@ def objective(args):
         label_names=['labels'],
         dataset_kwargs={"skip_prepare_dataset":True},
         run_name=args.run_name,
+        max_seq_length=max_seq_length
         
     )
     trainer = SFTTrainer(

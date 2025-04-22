@@ -197,22 +197,20 @@ def sematic_measurement(eval_pred,compute_result):
         similarity = PLM.similarity_pairwise(p_embeds,i_embeds)
         similarity_average = similarity.mean().item()
         
-        if not_log_output and np.random.random() > 0.5 and global_ref.state.global_step % 5000 == 0:
+        if not_log_output and np.random.random() > 0.5 and global_ref.state.global_step % 5000 == 0 and global_ref.state.is_world_process_zero:
             not_log_output = False
             table = wandb.Table(columns=['labels', 'generated'])
             for i in range(min(10, len(predictions_sentence))):
             # check_idx = np.random.randint(0, len(input_sentence))
                 table.add_data(input_sentence[i], predictions_sentence[i])
-            
-            wandb.log({'eval_check/generated_examples':table},step=global_ref.state.global_step)
+            wandb.log({'eval_check/generated_examples':table})#,step=global_ref.state.global_step)
         if compute_result:
-            if not_log_output and global_ref.state.global_step % 5000 == 0:
+            if not_log_output and global_ref.state.global_step % 5000 == 0 and global_ref.state.is_world_process_zero:
                 table = wandb.Table(columns=['labels', 'generated'])
                 for i in range(min(10, len(predictions_sentence))):
                 # check_idx = np.random.randint(0, len(input_sentence))
                     table.add_data(input_sentence[i], predictions_sentence[i])
-                
-                wandb.log({'eval_check/generated_examples':table},step=global_ref.state.global_step)
+                wandb.log({'eval_check/generated_examples':table})#,step=global_ref.state.global_step)
             not_log_output == True
         return {
             'average_similarity':similarity_average  

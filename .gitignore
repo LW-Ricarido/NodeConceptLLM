@@ -4,3 +4,4 @@ dataset
 *.pyc
 logs
 wandb
+ckpts

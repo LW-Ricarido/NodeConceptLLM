@@ -141,7 +141,7 @@ def objective(args):
     
     training_arguments = SFTConfig(
         output_dir=args.model_save_path,
-        # report_to='wandb',
+        report_to='wandb',
         logging_dir=args.log_dir,
         per_device_train_batch_size=args.train_size,
         per_device_eval_batch_size=args.eval_size,

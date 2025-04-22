@@ -1,3 +1,4 @@
 base_models
 datasets_local
 dataset
+*.pyc

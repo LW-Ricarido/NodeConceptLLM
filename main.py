@@ -29,6 +29,10 @@ PLM = None
 tokenizer = None
 overall_prediction_num = 0
 overall_correct_num = 0
+node_prediction_num = 0
+node_correct_num = 0
+graph_prediction_num = 0
+graph_correct_num = 0
 global_ref = None
 not_log_output = True
 # def distributed_sum(value: int):
@@ -129,7 +133,7 @@ def objective(args):
         labels[:prompt_length] = -100
         dp['labels'] = labels.tolist()
         dp['length'] = len(dp['input_ids'])
-        dp.pop('type')
+        # dp.pop('type')
         return dp
     with PartialState().local_main_process_first():
         train_dataset = train_dataset.map(chat_map,num_proc=16)
@@ -148,20 +152,20 @@ def objective(args):
         gradient_accumulation_steps=4,
         remove_unused_columns=False,
         fp16=False,
-        learning_rate=1e-2,
+        learning_rate=args.lr,
         # lr_scheduler_type='constant_with_warmup',
         warmup_steps=100,
-        num_train_epochs=10,
+        num_train_epochs=args.epoch,
         save_strategy='no',
         eval_strategy='steps',
-        eval_steps=500,
+        eval_steps=2000,
         # max_grad_norm=1,
-        logging_steps=100,
+        logging_steps=500,
         optim='sgd',
         batch_eval_metrics=True,
         eval_do_concat_batches=True,
         # auto_find_batch_size=True,
-        dataloader_num_workers=4,
+        dataloader_num_workers=16,
         include_for_metrics=['loss'],
         label_names=['labels'],
         dataset_kwargs={"skip_prepare_dataset":True},
@@ -224,6 +228,10 @@ def prediction_measurement(eval_pred, compute_result):
         global tokenizer
         global positive_recalled
         global false_positive
+        global node_prediction_num
+        global node_correct_num
+        global graph_prediction_num
+        global graph_correct_num
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
         
@@ -231,10 +239,10 @@ def prediction_measurement(eval_pred, compute_result):
         if isinstance(eval_pred.predictions, tuple):
             predictions = eval_pred.predictions[0].argmax(dim=-1)
             # predicted_values = eval_pred.predictions[1]
-            if not isinstance(eval_pred.predictions[1],tuple):
-                predicted_values = eval_pred.predictions[1]
-            else:
-                predicted_values = None
+            # if not isinstance(eval_pred.predictions[1],tuple):
+            #     predicted_values = eval_pred.predictions[1]
+            # else:
+            predicted_values = None
         else:
             predictions = eval_pred.predictions.argmax(dim=-1)
             predicted_values = None
@@ -245,17 +253,22 @@ def prediction_measurement(eval_pred, compute_result):
         prompt_end_poses = torch.argmax((label_ids != -100).int(),dim=1)
         batch_correct_num = 0
         for i in range(predictions.shape[0]):
+            
             current_labels = tokenizer.decode(label_ids[i,prompt_end_poses[i]+1:prompt_end_poses[i]+labels_length[i] -1])
-            if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
-                batch_correct_num += 1
-                if "Yes" in current_labels:
-                    positive_recalled += 1
-            # if current_labels in tokenizer.decode(predictions[i]):
-            #     batch_correct_num += 1
-            #     if "Yes" in current_labels:
-            #         positive_recalled += 1
-            elif "Yes" in current_labels:
-                false_positive += 1
+            if "Yes" in current_labels or  "Nope" in current_labels:
+                graph_prediction_num += 1
+                if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
+                    batch_correct_num += 1
+                    graph_correct_num += 1
+                    if "Yes" in current_labels:
+                        positive_recalled += 1
+                elif "Yes" in current_labels:
+                    false_positive += 1
+            else:
+                node_prediction_num += 1
+                if current_labels in tokenizer.decode(predictions[i]):
+                    batch_correct_num += 1
+                    node_correct_num += 1
         global overall_correct_num
         global overall_prediction_num
         overall_prediction_num += predictions.shape[0]
@@ -269,6 +282,8 @@ def prediction_measurement(eval_pred, compute_result):
         reported_roc_auc = 0
         report_positive_recall = 0
         report_false_positive = 0
+        report_node_acc = node_correct_num / (node_prediction_num + 1e-6)
+        report_graph_acc = graph_correct_num / (graph_prediction_num + 1e-6)
         global y_trues
         global y_preds
         if predicted_values is not None:
@@ -277,6 +292,10 @@ def prediction_measurement(eval_pred, compute_result):
         if compute_result:
             overall_correct_num = 0
             overall_prediction_num = 0
+            node_prediction_num = 0
+            node_correct_num = 0
+            graph_prediction_num = 0
+            graph_correct_num = 0
             evaluator = Evaluator(name='ogbg-molhiv')
             if len(y_trues) != 0:
                 print("======== get ROC auc =========")
@@ -297,10 +316,12 @@ def prediction_measurement(eval_pred, compute_result):
             'correct_num':report_correct_num,
             "prediction_acc": report_correct_num / report_prediction,
             'roc_auc':reported_roc_auc,
-            'traget_positive':target_positive,
+            'target_positive':target_positive,
             'predict_positive':predict_positive,
             "recalled_positive_by_llm":report_positive_recall,
             "false_positive_by_llm": report_false_positive, 
+            "node_acc": report_node_acc,
+            "graph_acc": report_graph_acc,
         }
     
     
@@ -376,6 +397,16 @@ if __name__ == "__main__":
         '--eval_size',
         type=int,
         default=8
+    )
+    parser.add_argument(
+        '--lr',
+        type=float,
+        default=1e-3
+    )
+    parser.add_argument(
+        '--epoch',
+        type=int,
+        default=10,
     )
     args = parser.parse_args()
     set_seed(42)

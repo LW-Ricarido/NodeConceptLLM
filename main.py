@@ -232,6 +232,7 @@ def prediction_measurement(eval_pred, compute_result):
         global node_correct_num
         global graph_prediction_num
         global graph_correct_num
+        global global_ref
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
         
@@ -252,9 +253,15 @@ def prediction_measurement(eval_pred, compute_result):
         # first_eos_idx = (predictions == eos_id).type(torch.int32).argmax(dim=1)
         prompt_end_poses = torch.argmax((label_ids != -100).int(),dim=1)
         batch_correct_num = 0
+        log_to_wandb = False
+        if np.random.random() > 0.1 and global_ref.state.is_world_process_zero:
+            log_to_wandb = True
+            table = wandb.Table(columns=['labels', 'generated'])
         for i in range(predictions.shape[0]):
             
             current_labels = tokenizer.decode(label_ids[i,prompt_end_poses[i]+1:prompt_end_poses[i]+labels_length[i] -1])
+            if log_to_wandb:
+                table.add_data([current_labels, tokenizer.decode(predictions[i])])
             if "Yes" in current_labels or  "Nope" in current_labels:
                 graph_prediction_num += 1
                 if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
@@ -269,6 +276,8 @@ def prediction_measurement(eval_pred, compute_result):
                 if current_labels in tokenizer.decode(predictions[i]):
                     batch_correct_num += 1
                     node_correct_num += 1
+        if log_to_wandb:
+            wandb.log({'eval_check/generated_examples':table})
         global overall_correct_num
         global overall_prediction_num
         overall_prediction_num += predictions.shape[0]

@@ -196,7 +196,7 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         non_classificaton_ids = np.where((task_types != 'classification'))[0].tolist()[:len(pure_classification_train_ids)]
         arxiv_train_non_classification_ds = arxiv_dataset.select(non_classificaton_ids)
         
-        arxiv_valid_ids = np.where((splits == 'valid') & (task_types == 'classification'))[0].tolist()
+        arxiv_valid_ids = np.where((splits == 'valid') & (task_types == 'classification'))[0].tolist()[0:3000]
         arxiv_valid_ds = arxiv_dataset.select(arxiv_valid_ids)
         
         ### molhiv

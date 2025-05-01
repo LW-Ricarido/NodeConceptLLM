@@ -229,8 +229,40 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         
         train_dataset = concatenate_datasets([arxiv_train_classification_ds,arxiv_train_non_classification_ds, molhiv_train_ds,mutag_train_ds])
     
-        test_dataset = concatenate_datasets([arxiv_valid_ds,molhiv_test_ds,mutag_train_ds])
+        test_dataset = concatenate_datasets([arxiv_valid_ds,molhiv_test_ds,mutag_test_ds])
+    
+    elif "value_head_finetune" in dataset_dir:
+        ### molhiv
+        molhiv_positive_ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/molhiv_graph_embedding_QA_pure_nodes_with_element_type_count_cot_pure_positive')
+        splits = np.array(molhiv_positive_ds['split_set'])
+        molhiv_train_positive_ids = np.where(splits == 'train')[0].tolist()
+        molhiv_test_positive_ids = np.where(splits == 'valid')[0].tolist()
         
+        molhiv_train_ds =  molhiv_positive_ds.select(molhiv_train_positive_ids)
+        molhiv_test_ds = molhiv_positive_ds.select(molhiv_test_positive_ids)
+        
+        molhiv_negative_ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/molhiv_graph_embedding_QA_pure_nodes_with_element_type_count_cot_pure_negative')
+        splits = np.array(molhiv_negative_ds['split_set'])
+        molhiv_train_negative_ids = np.where(splits == 'train')[0].tolist()[:5 * len(molhiv_train_positive_ids)]
+        molhiv_test_negative_ids = np.where(splits == 'valid')[0].tolist()[: 3 * len(molhiv_test_positive_ids)]
+        
+        molhiv_train_ds = concatenate_datasets([molhiv_train_ds,molhiv_negative_ds.select(molhiv_train_negative_ids)])
+        molhiv_test_ds = concatenate_datasets([molhiv_test_ds, molhiv_negative_ds.select(molhiv_test_negative_ids)])
+        
+        ### mutag 
+        
+        mutag_ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/mutag_graph_embedding_QA_pure_nodes_with_element_type_count_cot')
+        splits = np.array(mutag_ds['split_set'])
+        train_ids = np.where(splits == 'train')[0].tolist()
+        test_ids = np.where(splits == 'valid')[0].tolist()
+        mutag_train_ds = mutag_ds.select(train_ids)
+        mutag_test_ds = mutag_ds.select(test_ids)
+        
+        
+        
+        train_dataset = concatenate_datasets([molhiv_train_ds,mutag_train_ds])
+    
+        test_dataset = concatenate_datasets([molhiv_test_ds,mutag_test_ds])
         
     elif 'CoraPureEmbeds2Prediction_1TokenDataset' in dataset_dir:
         dataset = load_from_disk(dataset_dir)

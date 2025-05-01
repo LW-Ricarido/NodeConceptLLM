@@ -6,3 +6,4 @@ logs
 wandb
 ckpts
 *.ipynb
+eval_outputs

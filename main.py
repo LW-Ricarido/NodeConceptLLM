@@ -17,6 +17,7 @@ from ogb.graphproppred import Evaluator
 import numpy as np
 import wandb
 from accelerate import PartialState
+from datetime import datetime
 # from trainers.wandb_wrapper import add_wandb_generation_logging
 
 y_trues = []
@@ -98,6 +99,7 @@ def objective(args):
                 model = LLama4GraphWithValueHead.from_pretrained(peft_model,is_for_sft=True)
             else:
                 model = LLama4GraphWithValueHead.from_pretrained(model,is_for_sft=True, peft_config=lora_config)
+            model.positive_id = tokenizer.encode("Yes", add_special_tokens=False)[0]
             model.pretrained_model.print_trainable_parameters()
         else:
             model = get_peft_model(model, lora_config)
@@ -419,9 +421,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     set_seed(42)
-    if not os.path.exists(args.log_dir):
-        os.makedirs(args.log_dir)
-    with open(os.path.join(args.log_dir, 'args.json'),'w') as fp:
-        import json
-        json.dump(vars(args), fp)
+    now_str = str(datetime.now())
+    args.log_dir = args.log_dir + now_str
+    args.model_save_path = args.model_save_path + now_str
+    # if not os.path.exists(args.log_dir):
+    #     os.makedirs(args.log_dir)
+    # with open(os.path.join(args.log_dir, 'args.json'),'w') as fp:
+    #     import json
+    #     json.dump(vars(args), fp)
     objective(args)

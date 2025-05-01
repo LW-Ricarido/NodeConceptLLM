@@ -36,6 +36,7 @@ graph_prediction_num = 0
 graph_correct_num = 0
 global_ref = None
 not_log_output = True
+value_check = False
 # def distributed_sum(value: int):
 #     if dist.is_initialized():
 #         tensor = torch.tensor(value, device="cuda")
@@ -94,6 +95,9 @@ def objective(args):
             task_type=TaskType.CAUSAL_LM
         )
         if args.use_value_head:
+            global value_check
+            value_check = True
+            
             if args.load_local_adapter is not None:
                 peft_model = PeftModel.from_pretrained(model, args.load_local_adapter, is_trainable=True,).to(device=model.device)
                 model = LLama4GraphWithValueHead.from_pretrained(peft_model,is_for_sft=True)
@@ -235,17 +239,19 @@ def prediction_measurement(eval_pred, compute_result):
         global graph_prediction_num
         global graph_correct_num
         global global_ref
+        global value_check
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
         
         label_ids = eval_pred.label_ids
         if isinstance(eval_pred.predictions, tuple):
             predictions = eval_pred.predictions[0].argmax(dim=-1)
-            # predicted_values = eval_pred.predictions[1]
+            if value_check:
+                predicted_values = eval_pred.predictions[1]
             # if not isinstance(eval_pred.predictions[1],tuple):
             #     predicted_values = eval_pred.predictions[1]
-            # else:
-            predicted_values = None
+            else:
+                predicted_values = None
         else:
             predictions = eval_pred.predictions.argmax(dim=-1)
             predicted_values = None

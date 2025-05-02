@@ -164,7 +164,7 @@ def objective(args):
         num_train_epochs=args.epoch,
         save_strategy='no',
         eval_strategy='steps',
-        eval_steps=500,
+        eval_steps=args.eval_steps,
         # max_grad_norm=1,
         logging_steps=500,
         optim='sgd',
@@ -424,6 +424,11 @@ if __name__ == "__main__":
         '--epoch',
         type=int,
         default=10,
+    )
+    parser.add_argument(
+        'eval_step',
+        type=int,
+        default=500,
     )
     args = parser.parse_args()
     set_seed(42)

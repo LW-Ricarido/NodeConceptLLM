@@ -130,7 +130,7 @@ def load_MUTAG_graph_prediction_dataset():
                         answer += " {} {} atoms,".format(atom_count, atom_name)
                     else:
                         answer += " {} {} atom,".format(atom_count, atom_name)
-            anwer = answer[:-1] + "."
+            answer = answer[:-1] + "."
             if i < int(0.8 * len(graph_datasets)):
                 split_set = 'train'
             elif i < int(0.9 * len(graph_datasets)):

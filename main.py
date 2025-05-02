@@ -426,7 +426,7 @@ if __name__ == "__main__":
         default=10,
     )
     parser.add_argument(
-        'eval_steps',
+        '--eval_steps',
         type=int,
         default=500,
     )

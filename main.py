@@ -37,6 +37,8 @@ graph_correct_num = 0
 global_ref = None
 not_log_output = True
 value_check = False
+global_similarity = 0.0
+eval_set_size = 0
 # def distributed_sum(value: int):
 #     if dist.is_initialized():
 #         tensor = torch.tensor(value, device="cuda")
@@ -200,6 +202,8 @@ def sematic_measurement(eval_pred,compute_result):
         # tokenizer = AutoTokenizer.from_pretrained('/data/sharefile/wei/.llama/HF_format/Meta-Llama3.1-8B')
         global global_ref
         global not_log_output
+        global eval_set_size
+        global global_similarity
         predictions = eval_pred.predictions.argmax(dim=-1)
         label_ids = eval_pred.label_ids
         label_ids[label_ids == -100] = tokenizer.pad_token_id
@@ -208,6 +212,8 @@ def sematic_measurement(eval_pred,compute_result):
         p_embeds = PLM.encode(predictions_sentence)
         i_embeds = PLM.encode(input_sentence)
         similarity = PLM.similarity_pairwise(p_embeds,i_embeds)
+        global_similarity += similarity.sum().item()
+        eval_set_size += similarity.shape[0]
         similarity_average = similarity.mean().item()
         
         if not_log_output and np.random.random() > 0.5 and global_ref.state.global_step % 5000 == 0 and global_ref.state.is_world_process_zero:
@@ -225,6 +231,9 @@ def sematic_measurement(eval_pred,compute_result):
                     table.add_data(input_sentence[i], predictions_sentence[i])
                 wandb.log({'eval_check/generated_examples':table})#,step=global_ref.state.global_step)
             not_log_output == True
+            similarity_average = global_similarity / eval_set_size
+            global_similarity = 0.0
+            eval_set_size = 0
         return {
             'average_similarity':similarity_average  
         }

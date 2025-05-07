@@ -34,6 +34,8 @@ node_prediction_num = 0
 node_correct_num = 0
 graph_prediction_num = 0
 graph_correct_num = 0
+link_prediction_num = 0
+link_correct_num = 0
 global_ref = None
 not_log_output = True
 value_check = False
@@ -90,7 +92,7 @@ def objective(args):
     if args.use_LoRA:
         print('getting LoRA model')
         lora_config = LoraConfig(
-            r=8,
+            r=args.r_rank,
             lora_alpha=16,
             lora_dropout=0.1,
             bias="none",
@@ -249,6 +251,8 @@ def prediction_measurement(eval_pred, compute_result):
         global graph_correct_num
         global global_ref
         global value_check
+        global link_prediction_num
+        global link_correct_num
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
         
@@ -280,14 +284,20 @@ def prediction_measurement(eval_pred, compute_result):
             if log_to_wandb:
                 table.add_data(current_labels, tokenizer.decode(predictions[i]))
             if "Yes" in current_labels or  "Nope" in current_labels:
-                graph_prediction_num += 1
-                if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
-                    batch_correct_num += 1
-                    graph_correct_num += 1
-                    if "Yes" in current_labels:
-                        positive_recalled += 1
-                elif "Yes" in current_labels:
-                    false_positive += 1
+                if "nodes" not in current_labels:
+                    graph_prediction_num += 1
+                    if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
+                        batch_correct_num += 1
+                        graph_correct_num += 1
+                        if "Yes" in current_labels:
+                            positive_recalled += 1
+                    elif "Yes" in current_labels:
+                        false_positive += 1
+                else:
+                    link_prediction_num += 1
+                    if ("Yes" in current_labels and "Yes" in tokenizer.decode(predictions[i])) or ("Nope" in current_labels and "Nope" in tokenizer.decode(predictions[i])):
+                        batch_correct_num += 1
+                        link_correct_num += 1
             else:
                 node_prediction_num += 1
                 if current_labels in tokenizer.decode(predictions[i]):
@@ -310,9 +320,11 @@ def prediction_measurement(eval_pred, compute_result):
         report_false_positive = 0
         report_node_acc = node_correct_num / (node_prediction_num + 1e-6)
         report_graph_acc = graph_correct_num / (graph_prediction_num + 1e-6)
+        report_link_acc = link_correct_num / (link_prediction_num + 1e-6)
         global y_trues
         global y_preds
         if predicted_values is not None:
+            # import ipdb; ipdb.set_trace()
             y_trues.extend(predicted_values[:,0].tolist())
             y_preds.extend(predicted_values[:,1].tolist())
         if compute_result:
@@ -322,14 +334,19 @@ def prediction_measurement(eval_pred, compute_result):
             node_correct_num = 0
             graph_prediction_num = 0
             graph_correct_num = 0
+            link_prediction_num = 0
+            link_correct_num = 0
             evaluator = Evaluator(name='ogbg-molhiv')
             if len(y_trues) != 0:
-                print("======== get ROC auc =========")
+                # print("======== get ROC auc =========")
+                
                 y_trues = np.expand_dims(np.array(y_trues),axis=1)
                 y_preds = np.expand_dims(np.array(y_preds), axis=1)
                 reported_roc_auc = evaluator.eval({'y_true': y_trues, 'y_pred': y_preds})['rocauc']
                 target_positive = y_trues.sum()
                 predict_positive = (y_preds > 0.5).sum()
+                print('y_preds shape: ',y_preds.shape )
+                print('report roc auc:', reported_roc_auc)
             report_positive_recall = positive_recalled
             report_false_positive = false_positive
             positive_recalled = 0
@@ -348,6 +365,7 @@ def prediction_measurement(eval_pred, compute_result):
             "false_positive_by_llm": report_false_positive, 
             "node_acc": report_node_acc,
             "graph_acc": report_graph_acc,
+            'link_acc': report_link_acc
         }
     
     
@@ -438,6 +456,11 @@ if __name__ == "__main__":
         '--eval_steps',
         type=int,
         default=500,
+    )
+    parser.add_argument(
+        '--r_rank',
+        type=int,
+        default=8,
     )
     args = parser.parse_args()
     set_seed(42)

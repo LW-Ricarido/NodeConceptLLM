@@ -103,8 +103,12 @@ def objective(args):
             value_check = True
             
             if args.load_local_adapter is not None:
-                peft_model = PeftModel.from_pretrained(model, args.load_local_adapter, is_trainable=True,).to(device=model.device)
-                model = LLama4GraphWithValueHead.from_pretrained(peft_model,is_for_sft=True)
+                if args.fix_lora:
+                    peft_model = PeftModel.from_pretrained(model, args.load_local_adapter, is_trainable=False,).to(device=model.device)
+                    model = LLama4GraphWithValueHead.from_pretrained(peft_model,is_for_sft=True)
+                else:
+                    peft_model = PeftModel.from_pretrained(model, args.load_local_adapter, is_trainable=True,).to(device=model.device)
+                    model = LLama4GraphWithValueHead.from_pretrained(peft_model,is_for_sft=True)
             else:
                 model = LLama4GraphWithValueHead.from_pretrained(model,is_for_sft=True, peft_config=lora_config)
             model.positive_id = tokenizer.encode("Yes", add_special_tokens=False)[0]
@@ -461,6 +465,10 @@ if __name__ == "__main__":
         '--r_rank',
         type=int,
         default=8,
+    )
+    parser.add_argument(
+        '--fix_lora',
+        action='store_true'
     )
     args = parser.parse_args()
     set_seed(42)

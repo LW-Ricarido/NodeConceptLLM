@@ -196,7 +196,7 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         non_classificaton_ids = np.where((task_types != 'classification'))[0].tolist()[:len(pure_classification_train_ids)]
         arxiv_train_non_classification_ds = arxiv_dataset.select(non_classificaton_ids)
         
-        arxiv_valid_ids = np.where((splits == 'valid') & (task_types == 'classification'))[0].tolist()[0:3000]
+        arxiv_valid_ids = np.where((splits == 'test') & (task_types == 'classification'))[0].tolist()#[0:3000]
         arxiv_valid_ds = arxiv_dataset.select(arxiv_valid_ids)
         
         ### molhiv
@@ -229,8 +229,6 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         splits = np.array(cora_link_ds['split_set'])
         train_ids = np.where(splits == 'train')[0].tolist()
         test_ids = np.where(splits == 'valid')[0].tolist()
-        print("========train length:", len(train_ids))
-        print('======length:',len(test_ids))
         cora_train_link_ds = cora_link_ds.select(train_ids)
         cora_test_link_ds = cora_link_ds.select(test_ids)
         
@@ -266,9 +264,16 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         mutag_train_ds = mutag_ds.select(train_ids)
         mutag_test_ds = mutag_ds.select(test_ids)
         
+        ### link
+        cora_link_ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/cora_link_prediction')
+        splits = np.array(cora_link_ds['split_set'])
+        train_ids = np.where(splits == 'train')[0].tolist()
+        test_ids = np.where(splits == 'valid')[0].tolist()
+        cora_train_link_ds = cora_link_ds.select(train_ids)
+        cora_test_link_ds = cora_link_ds.select(test_ids)
         
         
-        train_dataset = concatenate_datasets([molhiv_train_ds,mutag_train_ds])
+        train_dataset = concatenate_datasets([molhiv_train_ds,mutag_train_ds,cora_train_link_ds])
     
         test_dataset = concatenate_datasets([molhiv_test_ds])#mutag_test_ds])
         

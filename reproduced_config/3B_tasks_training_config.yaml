@@ -1,0 +1,1029 @@
+{
+  "bf16": {
+    "value": false
+  },
+  "fp16": {
+    "value": false
+  },
+  "fsdp": {
+    "value": []
+  },
+  "seed": {
+    "value": 42
+  },
+  "tf32": {
+    "value": null
+  },
+  "debug": {
+    "value": []
+  },
+  "optim": {
+    "value": "sgd"
+  },
+  "top_k": {
+    "value": 50
+  },
+  "top_p": {
+    "value": 1
+  },
+  "_wandb": {
+    "value": {
+      "m": [
+        {
+          "1": "eval_check/generated_examples.size",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "train/global_step",
+          "6": [
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples.ncols",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/correct_num",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "train/grad_norm",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples.nrows",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/graph_acc",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "train/loss",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples.sha256",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples._latest_artifact_path",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples.path",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples._type",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/node_acc",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "train/learning_rate",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "train/epoch",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval_check/generated_examples.artifact_path",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/recalled_positive_by_llm",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/predict_positive",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/samples_per_second",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/steps_per_second",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/prediction_acc",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/target_positive",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/prediction_num",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/runtime",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/roc_auc",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/false_positive_by_llm",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        },
+        {
+          "1": "eval/loss",
+          "5": 2,
+          "6": [
+            1,
+            3
+          ],
+          "7": []
+        }
+      ],
+      "t": {
+        "1": [
+          1,
+          5,
+          11,
+          41,
+          49,
+          51,
+          53,
+          55,
+          71,
+          75,
+          76,
+          77,
+          84,
+          98,
+          105
+        ],
+        "2": [
+          1,
+          5,
+          11,
+          41,
+          49,
+          51,
+          53,
+          55,
+          71,
+          75,
+          76,
+          77,
+          84,
+          98,
+          105
+        ],
+        "3": [
+          7,
+          13,
+          19,
+          23,
+          55,
+          62,
+          66
+        ],
+        "4": "3.10.14",
+        "5": "0.19.8",
+        "6": "4.47.0",
+        "8": [
+          5
+        ],
+        "9": {
+          "1": "transformers_trainer"
+        },
+        "12": "0.19.8",
+        "13": "linux-x86_64"
+      },
+      "cli_version": "0.19.8",
+      "python_version": "3.10.14"
+    }
+  },
+  "prefix": {
+    "value": null
+  },
+  "do_eval": {
+    "value": true
+  },
+  "no_cuda": {
+    "value": false
+  },
+  "packing": {
+    "value": false
+  },
+  "use_cpu": {
+    "value": false
+  },
+  "do_train": {
+    "value": false
+  },
+  "head_dim": {
+    "value": 128
+  },
+  "id2label": {
+    "value": {
+      "0": "LABEL_0",
+      "1": "LABEL_1"
+    }
+  },
+  "label2id": {
+    "value": {
+      "LABEL_0": 0,
+      "LABEL_1": 1
+    }
+  },
+  "mlp_bias": {
+    "value": false
+  },
+  "run_name": {
+    "value": "llama_3_2_3B_prediction_fp16_lr3e-3"
+  },
+  "use_ipex": {
+    "value": false
+  },
+  "adafactor": {
+    "value": false
+  },
+  "data_seed": {
+    "value": null
+  },
+  "deepspeed": {
+    "value": null
+  },
+  "do_sample": {
+    "value": false
+  },
+  "hub_token": {
+    "value": "<HUB_TOKEN>"
+  },
+  "log_level": {
+    "value": "passive"
+  },
+  "max_steps": {
+    "value": -1
+  },
+  "num_beams": {
+    "value": 1
+  },
+  "ray_scope": {
+    "value": "last"
+  },
+  "report_to": {
+    "value": [
+      "wandb"
+    ]
+  },
+  "typical_p": {
+    "value": 1
+  },
+  "use_cache": {
+    "value": true
+  },
+  "use_liger": {
+    "value": false
+  },
+  "adam_beta1": {
+    "value": 0.9
+  },
+  "adam_beta2": {
+    "value": 0.999
+  },
+  "do_predict": {
+    "value": false
+  },
+  "eval_delay": {
+    "value": 0
+  },
+  "eval_steps": {
+    "value": 500
+  },
+  "hidden_act": {
+    "value": "silu"
+  },
+  "is_decoder": {
+    "value": false
+  },
+  "local_rank": {
+    "value": 0
+  },
+  "max_length": {
+    "value": 20
+  },
+  "min_length": {
+    "value": 0
+  },
+  "model_type": {
+    "value": "llama"
+  },
+  "optim_args": {
+    "value": null
+  },
+  "output_dir": {
+    "value": "ckpts/llama3_2_3B_Instruct/prediction_lr3e-32025-05-04 11:48:41.177251"
+  },
+  "past_index": {
+    "value": -1
+  },
+  "rope_theta": {
+    "value": 500000
+  },
+  "save_steps": {
+    "value": 500
+  },
+  "vocab_size": {
+    "value": 128262
+  },
+  "ddp_backend": {
+    "value": null
+  },
+  "ddp_timeout": {
+    "value": 1800
+  },
+  "fsdp_config": {
+    "value": {
+      "xla": false,
+      "xla_fsdp_v2": false,
+      "min_num_params": 0,
+      "xla_fsdp_grad_ckpt": false
+    }
+  },
+  "hidden_size": {
+    "value": 3072
+  },
+  "label_names": {
+    "value": [
+      "labels"
+    ]
+  },
+  "logging_dir": {
+    "value": "logs/llama3_2_3B_Instruct/prediction_lr3e-32025-05-04 11:48:41.177251"
+  },
+  "peft_config": {
+    "value": {
+      "default": {
+        "r": 8,
+        "bias": "none",
+        "revision": null,
+        "use_dora": false,
+        "lora_bias": false,
+        "peft_type": "LORA",
+        "task_type": "CAUSAL_LM",
+        "eva_config": null,
+        "lora_alpha": 16,
+        "use_rslora": false,
+        "auto_mapping": null,
+        "lora_dropout": 0.1,
+        "megatron_core": "megatron.core",
+        "fan_in_fan_out": false,
+        "inference_mode": false,
+        "layers_pattern": null,
+        "runtime_config": {
+          "ephemeral_gpu_offload": false
+        },
+        "target_modules": [
+          "v_proj",
+          "q_proj"
+        ],
+        "exclude_modules": null,
+        "megatron_config": null,
+        "modules_to_save": null,
+        "init_lora_weights": true,
+        "layer_replication": null,
+        "layers_to_transform": null,
+        "base_model_name_or_path": "base_models/llama3_2_3B_Instruct_pretrain_lr03_ckpt_197000"
+      }
+    }
+  },
+  "push_to_hub": {
+    "value": false
+  },
+  "return_dict": {
+    "value": true
+  },
+  "temperature": {
+    "value": 1
+  },
+  "torch_dtype": {
+    "value": "float32"
+  },
+  "torchdynamo": {
+    "value": null
+  },
+  "torchscript": {
+    "value": false
+  },
+  "adam_epsilon": {
+    "value": 1e-8
+  },
+  "bos_token_id": {
+    "value": 128000
+  },
+  "disable_tqdm": {
+    "value": false
+  },
+  "eos_token_id": {
+    "value": [
+      128001,
+      128008,
+      128009
+    ]
+  },
+  "eval_packing": {
+    "value": null
+  },
+  "fp16_backend": {
+    "value": "auto"
+  },
+  "hub_model_id": {
+    "value": null
+  },
+  "hub_strategy": {
+    "value": "every_save"
+  },
+  "pad_token_id": {
+    "value": null
+  },
+  "problem_type": {
+    "value": null
+  },
+  "rms_norm_eps": {
+    "value": 0.00001
+  },
+  "rope_scaling": {
+    "value": {
+      "factor": 32,
+      "rope_type": "llama3",
+      "low_freq_factor": 1,
+      "high_freq_factor": 4,
+      "original_max_position_embeddings": 8192
+    }
+  },
+  "sep_token_id": {
+    "value": null
+  },
+  "use_bfloat16": {
+    "value": false
+  },
+  "warmup_ratio": {
+    "value": 0
+  },
+  "warmup_steps": {
+    "value": 100
+  },
+  "weight_decay": {
+    "value": 0
+  },
+  "_name_or_path": {
+    "value": "base_models/llama3_2_3B_Instruct_pretrain_lr03_ckpt_197000"
+  },
+  "architectures": {
+    "value": [
+      "LLama4Graph"
+    ]
+  },
+  "bad_words_ids": {
+    "value": null
+  },
+  "eval_on_start": {
+    "value": false
+  },
+  "eval_strategy": {
+    "value": "steps"
+  },
+  "jit_mode_eval": {
+    "value": false
+  },
+  "learning_rate": {
+    "value": 0.003
+  },
+  "logging_steps": {
+    "value": 500
+  },
+  "max_grad_norm": {
+    "value": 1
+  },
+  "mp_parameters": {
+    "value": ""
+  },
+  "output_scores": {
+    "value": false
+  },
+  "save_strategy": {
+    "value": "no"
+  },
+  "split_batches": {
+    "value": null
+  },
+  "torch_compile": {
+    "value": false
+  },
+  "tpu_num_cores": {
+    "value": null
+  },
+  "attention_bias": {
+    "value": false
+  },
+  "bf16_full_eval": {
+    "value": false
+  },
+  "dataset_kwargs": {
+    "value": {
+      "skip_prepare_dataset": true
+    }
+  },
+  "early_stopping": {
+    "value": false
+  },
+  "fp16_full_eval": {
+    "value": false
+  },
+  "fp16_opt_level": {
+    "value": "O1"
+  },
+  "length_penalty": {
+    "value": 1
+  },
+  "max_seq_length": {
+    "value": 554
+  },
+  "pretraining_tp": {
+    "value": 1
+  },
+  "tf_legacy_loss": {
+    "value": false
+  },
+  "use_mps_device": {
+    "value": false
+  },
+  "chars_per_token": {
+    "value": "<CHARS_PER_TOKEN>"
+  },
+  "finetuning_task": {
+    "value": null
+  },
+  "group_by_length": {
+    "value": false
+  },
+  "hub_always_push": {
+    "value": false
+  },
+  "num_beam_groups": {
+    "value": 1
+  },
+  "save_only_model": {
+    "value": false
+  },
+  "suppress_tokens": {
+    "value": null
+  },
+  "tokenizer_class": {
+    "value": null
+  },
+  "dataset_num_proc": {
+    "value": null
+  },
+  "dispatch_batches": {
+    "value": null
+  },
+  "full_determinism": {
+    "value": false
+  },
+  "hub_private_repo": {
+    "value": null
+  },
+  "ignore_data_skip": {
+    "value": false
+  },
+  "log_on_each_node": {
+    "value": true
+  },
+  "logging_strategy": {
+    "value": "steps"
+  },
+  "num_of_sequences": {
+    "value": 1024
+  },
+  "num_train_epochs": {
+    "value": 50
+  },
+  "save_safetensors": {
+    "value": true
+  },
+  "save_total_limit": {
+    "value": null
+  },
+  "use_liger_kernel": {
+    "value": false
+  },
+  "attention_dropout": {
+    "value": 0
+  },
+  "ddp_bucket_cap_mb": {
+    "value": null
+  },
+  "diversity_penalty": {
+    "value": 0
+  },
+  "greater_is_better": {
+    "value": null
+  },
+  "initializer_range": {
+    "value": 0.02
+  },
+  "intermediate_size": {
+    "value": 8192
+  },
+  "log_level_replica": {
+    "value": "warning"
+  },
+  "lr_scheduler_type": {
+    "value": "linear"
+  },
+  "model_init_kwargs": {
+    "value": null
+  },
+  "num_hidden_layers": {
+    "value": 28
+  },
+  "output_attentions": {
+    "value": false
+  },
+  "push_to_hub_token": {
+    "value": "<PUSH_TO_HUB_TOKEN>"
+  },
+  "save_on_each_node": {
+    "value": false
+  },
+  "tpu_metrics_debug": {
+    "value": false
+  },
+  "accelerator_config": {
+    "value": {
+      "even_batches": true,
+      "non_blocking": false,
+      "split_batches": false,
+      "dispatch_batches": null,
+      "use_seedable_sampler": true,
+      "gradient_accumulation_kwargs": null
+    }
+  },
+  "batch_eval_metrics": {
+    "value": true
+  },
+  "dataset_batch_size": {
+    "value": 1000
+  },
+  "dataset_text_field": {
+    "value": null
+  },
+  "is_encoder_decoder": {
+    "value": false
+  },
+  "length_column_name": {
+    "value": "length"
+  },
+  "logging_first_step": {
+    "value": false
+  },
+  "repetition_penalty": {
+    "value": 1
+  },
+  "torch_compile_mode": {
+    "value": null
+  },
+  "add_cross_attention": {
+    "value": false
+  },
+  "evaluation_strategy": {
+    "value": null
+  },
+  "forced_bos_token_id": {
+    "value": null
+  },
+  "forced_eos_token_id": {
+    "value": null
+  },
+  "fsdp_min_num_params": {
+    "value": 0
+  },
+  "include_for_metrics": {
+    "value": [
+      "loss"
+    ]
+  },
+  "neftune_noise_alpha": {
+    "value": null
+  },
+  "num_attention_heads": {
+    "value": 24
+  },
+  "num_key_value_heads": {
+    "value": 8
+  },
+  "skip_memory_metrics": {
+    "value": true
+  },
+  "tie_encoder_decoder": {
+    "value": false
+  },
+  "tie_word_embeddings": {
+    "value": true
+  },
+  "auto_find_batch_size": {
+    "value": false
+  },
+  "dataloader_drop_last": {
+    "value": false
+  },
+  "model/num_parameters": {
+    "value": 3217424384
+  },
+  "no_repeat_ngram_size": {
+    "value": 0
+  },
+  "num_return_sequences": {
+    "value": 1
+  },
+  "optim_target_modules": {
+    "value": null
+  },
+  "output_hidden_states": {
+    "value": false
+  },
+  "overwrite_output_dir": {
+    "value": false
+  },
+  "prediction_loss_only": {
+    "value": false
+  },
+  "push_to_hub_model_id": {
+    "value": null
+  },
+  "task_specific_params": {
+    "value": null
+  },
+  "transformers_version": {
+    "value": "4.47.0"
+  },
+  "begin_suppress_tokens": {
+    "value": null
+  },
+  "dataloader_pin_memory": {
+    "value": true
+  },
+  "ddp_broadcast_buffers": {
+    "value": null
+  },
+  "metric_for_best_model": {
+    "value": null
+  },
+  "remove_invalid_values": {
+    "value": false
+  },
+  "remove_unused_columns": {
+    "value": false
+  },
+  "torch_compile_backend": {
+    "value": null
+  },
+  "dataloader_num_workers": {
+    "value": 16
+  },
+  "decoder_start_token_id": {
+    "value": null
+  },
+  "eval_do_concat_batches": {
+    "value": true
+  },
+  "eval_use_gather_object": {
+    "value": false
+  },
+  "gradient_checkpointing": {
+    "value": false
+  },
+  "half_precision_backend": {
+    "value": "auto"
+  },
+  "label_smoothing_factor": {
+    "value": 0
+  },
+  "load_best_model_at_end": {
+    "value": false
+  },
+  "logging_nan_inf_filter": {
+    "value": true
+  },
+  "resume_from_checkpoint": {
+    "value": null
+  },
+  "chunk_size_feed_forward": {
+    "value": 0
+  },
+  "eval_accumulation_steps": {
+    "value": null
+  },
+  "max_position_embeddings": {
+    "value": 131072
+  },
+  "per_gpu_eval_batch_size": {
+    "value": null
+  },
+  "return_dict_in_generate": {
+    "value": false
+  },
+  "torch_empty_cache_steps": {
+    "value": null
+  },
+  "per_gpu_train_batch_size": {
+    "value": null
+  },
+  "push_to_hub_organization": {
+    "value": null
+  },
+  "include_tokens_per_second": {
+    "value": false
+  },
+  "dataloader_prefetch_factor": {
+    "value": null
+  },
+  "ddp_find_unused_parameters": {
+    "value": null
+  },
+  "include_inputs_for_metrics": {
+    "value": false
+  },
+  "per_device_eval_batch_size": {
+    "value": 30
+  },
+  "use_legacy_prediction_loop": {
+    "value": false
+  },
+  "cross_attention_hidden_size": {
+    "value": null
+  },
+  "gradient_accumulation_steps": {
+    "value": 4
+  },
+  "per_device_train_batch_size": {
+    "value": 2
+  },
+  "_attn_implementation_autoset": {
+    "value": true
+  },
+  "encoder_no_repeat_ngram_size": {
+    "value": 0
+  },
+  "average_tokens_across_devices": {
+    "value": false
+  },
+  "dataloader_persistent_workers": {
+    "value": false
+  },
+  "gradient_checkpointing_kwargs": {
+    "value": null
+  },
+  "include_num_input_tokens_seen": {
+    "value": false
+  },
+  "exponential_decay_length_penalty": {
+    "value": null
+  },
+  "fsdp_transformer_layer_cls_to_wrap": {
+    "value": null
+  },
+  "restore_callback_states_from_checkpoint": {
+    "value": false
+  }
+}

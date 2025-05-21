@@ -84,9 +84,9 @@ def prepare_graph_QA_dp(embeddings, input_ids, tokenizer, task_type, is_truncate
 def prepare_pretrain_dataset(tokenizer,tokenizer_name,dataset_name):
     # Load the dataset
     if 'arxiv' in dataset_name:
-        raw_texts = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_text.bin',map_location='cpu')
-        text_embeddings = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
-        data = DglNodePropPredDataset('ogbn-arxiv', root='/data/sharefile/wei/dataset')
+        raw_texts = torch.load('your_local_root_path/ogbn_arxiv/raw_text.bin',map_location='cpu')
+        text_embeddings = torch.load('your_local_root_path/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
+        data = DglNodePropPredDataset('ogbn-arxiv', root='your_local_root_path')
         graph, label = data[0]
         test_list = data.get_idx_split()['test']
     elif 'cora' in dataset_name:
@@ -103,7 +103,7 @@ def prepare_pretrain_dataset(tokenizer,tokenizer_name,dataset_name):
         raise NotImplementedError
     dp_list = []
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
 
     
     with tqdm(range(len(raw_texts))) as pbar:
@@ -167,11 +167,11 @@ def prepare_pretrain_dataset(tokenizer,tokenizer_name,dataset_name):
     dataset.save_to_disk(os.path.join('datasets_local',tokenizer_name,dataset_name))
     
 def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
-    text_to_embedding = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
-    map_idx = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/map_index_vector_to_text.bin', map_location='cpu')
+    text_to_embedding = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
+    map_idx = torch.load('your_local_root_path/ogbg_molhiv/map_index_vector_to_text.bin', map_location='cpu')
     dp_list = []
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     with tqdm(range(len(map_idx.keys()))) as pbar:
         key_list = list(map_idx.keys())
         for i in pbar:
@@ -368,7 +368,7 @@ def prepare_embedding_prediction_dataset(tokenizer, tokenizer_name, dataset_name
     unaligned_embeddings, graph, text_label, split_ids = raw_data['embeddings'], raw_data['graph'], raw_data['text_label'], raw_data['split_ids']
     dp_list = []
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     categories_string = "Please classify the paper into one of the following categories:"
     for key in arxiv_category_mapping_dict.keys():
         categories_string += arxiv_category_mapping_dict[key] + '; '
@@ -551,9 +551,9 @@ def prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, 
             
         
 def prepare_molhiv_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, edge_sort_type='random'):
-    map_index = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/map_index_vector_to_text.bin',map_location='cpu')
-    text_to_embeddings = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
-    graph_datasets = DglGraphPropPredDataset(name='ogbg-molhiv',root='/data/sharefile/wei/dataset')
+    map_index = torch.load('your_local_root_path/ogbg_molhiv/map_index_vector_to_text.bin',map_location='cpu')
+    text_to_embeddings = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
+    graph_datasets = DglGraphPropPredDataset(name='ogbg-molhiv',root='your_local_root_path')
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
 
     split_ids = graph_datasets.get_idx_split()
@@ -650,15 +650,114 @@ def prepare_arxiv_dpo_graph_QA_datasets(dataset_name):
     dataset = Dataset.from_list(dp_list)
     dataset.save_to_disk(os.path.join('datasets_local',dataset_name))
             
-            
 
+def prepare_link_prediction_dataset(dataset_name):
+    print(dataset_name)
+    np.random.seed(42)
+    if dataset_name == 'pubmed':
+        raw_data = load_pubmed_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)      
+    elif dataset_name == 'cora':
+        raw_data = load_cora_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
+    # 85: 5 : 10
+    unaligned_embeddings, graph, text_label, split_ids = raw_data['embeddings'], raw_data['graph'], raw_data['text_label'], raw_data['split_ids']
+    # graph = remove_reverse_edge(graph)
+    edge_ids = graph.edges()
+    max_nodes = 5
+    dp_lists = []
+    def prepare_graph_by_edge(og,graph_u_center, graph_v_center):
+        truncated = False
+        subgraph_embeddings  = []
+        u_subgraph_node_list = graph.successors(graph_u_center).tolist()   
+        if graph_v_center in u_subgraph_node_list:
+            u_subgraph_node_list.remove(graph_v_center)
+        v_subgraph_node_list = graph.successors(graph_v_center).tolist()
+        if graph_u_center in v_subgraph_node_list:
+            v_subgraph_node_list.remove(graph_u_center)
+        if len(u_subgraph_node_list) > max_nodes:
+            u_subgraph_node_list = u_subgraph_node_list[:max_nodes]
+            truncated = True
+        if len(v_subgraph_node_list) > max_nodes:
+            v_subgraph_node_list = v_subgraph_node_list[:max_nodes]
+            truncated = True
+        u_subgraph_node_list = [graph_u_center] + u_subgraph_node_list
+        v_subgraph_node_list = [graph_v_center] + v_subgraph_node_list
+        u_size = len(u_subgraph_node_list)
+        u_ego_subgraph = dgl.node_subgraph(og, u_subgraph_node_list)
+        v_ego_subgraph = dgl.node_subgraph(og, v_subgraph_node_list)
+        graph_description_str = begin_of_nodes_str
+        
+        for j, node_id in enumerate(u_ego_subgraph.ndata[dgl.NID].tolist()):
+            graph_description_str += embedding_mask_str + str(j)
+            subgraph_embeddings.append(unaligned_embeddings[node_id])
+        for j, node_id in enumerate(v_ego_subgraph.ndata[dgl.NID].tolist()):
+            graph_description_str += embedding_mask_str + str(j + u_size)
+            subgraph_embeddings.append(unaligned_embeddings[node_id])
+        graph_description_str += end_of_nodes_str
+        u_ego_subgraph = remove_reverse_edge(u_ego_subgraph)
+        v_ego_subgraph = remove_reverse_edge(v_ego_subgraph)
+        u_graph_us, u_graph_vs = u_ego_subgraph.edges()[0].tolist(), u_ego_subgraph.edges()[1].tolist()
+
+        for j in range(len(u_graph_us)):
+            graph_description_str += one_edge_str + str(u_graph_us[j]) + ', ' + str(u_graph_vs[j])
+        v_graph_us, v_graph_vs = v_ego_subgraph.edges()[0].tolist(), v_ego_subgraph.edges()[1].tolist()
+        for j in range(len(v_graph_us)):
+            graph_description_str += one_edge_str + str(v_graph_us[j] + u_size) + ', ' + str(v_graph_vs[j] + u_size)
+        graph_description_str += end_of_edges_str
+        return graph_description_str, subgraph_embeddings,u_size, truncated
+    def prepare_dp(positive):
+        dp  = {}
+        dp['question'] = "This is a graph: " + graph_description +". " + "Should node 0 connect node {}?".format(check_node_id)
+        if positive:
+            dp['answer'] = "Yes, these two nodes should be connected."
+        else:
+            dp['answer'] = "Nope, these two nodes have no relation."
+        dp['unaligned_input_embeds'] = subgraph_embeddings
+        dp['task_type'] = 'classification'
+        dp['split_set'] = split_set
+        dp['truncated'] = truncated
+        return dp
+    neg_list = {'train':[], 'valid':[],"test":[]}
+    positive_list = {'train':[], 'valid':[],"test":[]}
+    cnt = 0
+    for i in range(0, edge_ids[0].shape[0]):
+        u_center = edge_ids[0][i].item()
+        v_center = edge_ids[1][i].item()
+        if u_center > v_center:
+            continue
+        
+        graph_description,subgraph_embeddings, check_node_id, truncated =  prepare_graph_by_edge(graph,u_center, v_center)
+        if cnt < int(edge_ids[0].shape[0]//2 * 0.85):
+            split_set = 'train'
+        elif cnt < int(edge_ids[0].shape[0]//2 * 0.90):
+            split_set = 'valid'
+        else:
+            split_set = 'test'
+        cnt += 1
+        positive_list[split_set].append((u_center,v_center))
+        dp = prepare_dp(True)
+        dp_lists.append(dp)
+        while graph.has_edges_between([u_center], [v_center])[0]:
+            v_center = np.random.randint(u_center + 1, graph.num_nodes())
+        neg_list[split_set].append((u_center,v_center))
+        graph_description,subgraph_embeddings, check_node_id, truncated =  prepare_graph_by_edge(graph,u_center, v_center)
+        dp  = prepare_dp(False)
+        dp_lists.append(dp)
+    dgl.save_graphs('your_local_root_path/for_NC_check/{}'.format(dataset_name),[graph])
+    torch.save(neg_list,'your_local_root_path/for_NC_check/{}_neg'.format(dataset_name))
+    torch.save(positive_list,'your_local_root_path/for_NC_check/{}_pos'.format(dataset_name))
+    dataset = Dataset.from_list(dp_lists)
+    dataset.save_to_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_link_prediction'.format(dataset_name))
+        
+        
+        
+        
 if __name__ == '__main__':
-    
-    tokenizer_name = 'Llama-3.2-3B-Instruct'
-    tokenizer = AutoTokenizer.from_pretrained('meta-llama/{}'.format(tokenizer_name))
-    tokenizer.add_tokens([embedding_mask_str, begin_of_nodes_str, end_of_nodes_str, begin_of_edges_str, end_of_edges_str, one_edge_str])
-    # prepare_graph_embedding_QA_dataset(tokenizer,tokenizer_name,'arxiv_graph_embedding_QA_new')
-    prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name,'pubmed_graph_embedding_QA')
+    prepare_link_prediction_dataset('cora')
+    # tokenizer_name = 'Llama-3.2-3B-Instruct'
+    # tokenizer = AutoTokenizer.from_pretrained('meta-llama/{}'.format(tokenizer_name))
+    # tokenizer.add_tokens([embedding_mask_str, begin_of_nodes_str, end_of_nodes_str, begin_of_edges_str, end_of_edges_str, one_edge_str])
+    # # prepare_graph_embedding_QA_dataset(tokenizer,tokenizer_name,'arxiv_graph_embedding_QA_new')
+    # prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name,'pubmed_graph_embedding_QA')
     # prepare_molhiv_graph_embedding_QA_dataset(tokenizer, tokenizer_name,'molhiv_graph_embedding_QA_pure_nodes_with_element_type_count_cot')
     # prepare_embedding_prediction_dataset(tokenizer,'Llama-3.2-3B-Instruct','arxiv_pureEmbeds_prediction_new')
     # prepare_molhiv_pretrain_dataset(tokenizer,tokenizer_name,'molhiv_pretrain')

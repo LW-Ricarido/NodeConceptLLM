@@ -15,7 +15,7 @@ import dgl
 
 pubmed_text_label_list = ["Diabetes Mellitus, Experimental", "Diabetes Mellitus Type 1", "Diabetes Mellitus Type 2"]
 
-local_raw_dataset_dir = '/data/sharefile/wei/dataset/raw data/PubMed_orig'
+local_raw_dataset_dir = 'your_local_root_path/raw data/PubMed_orig'
 def get_pubmed_casestudy(corrected=False, SEED=0):
     _, data_X, data_Y, data_pubid, data_edges = parse_pubmed()
     data_X = normalize(data_X, norm="l1")

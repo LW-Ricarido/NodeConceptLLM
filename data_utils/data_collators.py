@@ -79,22 +79,23 @@ class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
         if self.tokenizer.pad_token_id is not None:
             batch['labels'][batch['labels'] == self.tokenizer.pad_token_id] = -100
         embedding_length = set()
-        for example in examples:
-            embedding_length.add(len(example['unaligned_input_embeds']))
-        if embedding_length == {1}:
-            if self.use_fp16:
-                batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device).half() for example in examples])
+        if 'unaligned_input_embeds' in examples[0].keys():
+            for example in examples:
+                embedding_length.add(len(example['unaligned_input_embeds']))
+            if embedding_length == {1}:
+                if self.use_fp16:
+                    batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device).half() for example in examples])
+                else:
+                    batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device) for example in examples])
             else:
-                batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device) for example in examples])
-        else:
-            if self.use_fp16:
-                batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device).half() for example in examples]
-            else:
-                batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device) for example in examples]
-        embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
-        batch['embedding_positions'] = []
-        for i in range(len(examples)):
-            batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
+                if self.use_fp16:
+                    batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device).half() for example in examples]
+                else:
+                    batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device) for example in examples]
+            embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
+            batch['embedding_positions'] = []
+            for i in range(len(examples)):
+                batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
         # batch['embedding_positions'] = [torch.tensor(example['embedding_positions'],dtype=torch.long,device=labels.device) for example in examples]
         return batch
         # return super().torch_call(examples)

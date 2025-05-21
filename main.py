@@ -205,7 +205,6 @@ def sematic_measurement(eval_pred,compute_result):
     with torch.no_grad():
         torch.cuda.empty_cache()
        
-        # tokenizer = AutoTokenizer.from_pretrained('/data/sharefile/wei/.llama/HF_format/Meta-Llama3.1-8B')
         global global_ref
         global not_log_output
         global eval_set_size

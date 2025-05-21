@@ -53,11 +53,11 @@ def load_arxiv_raw_data(embeddings, graph=False, text_label=False,
                         split_ids=False, raw_text=False):
     data_dict = {}
     if embeddings:
-        data_dict['embeddings'] = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
+        data_dict['embeddings'] = torch.load('your_local_root_path/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
     if raw_text:
-        data_dict['raw_text']  = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_text.bin',map_location='cpu')
+        data_dict['raw_text']  = torch.load('your_local_root_path/ogbn_arxiv/raw_text.bin',map_location='cpu')
     if graph:
-        data = DglNodePropPredDataset('ogbn-arxiv', root='/data/sharefile/wei/dataset')
+        data = DglNodePropPredDataset('ogbn-arxiv', root='your_local_root_path')
         data_dict['graph'], data_dict['label'] = data[0]
         data_dict['graph'] = dgl.add_reverse_edges(data_dict['graph'])
         data_dict['graph'] = dgl.to_simple_graph(data_dict['graph'])
@@ -65,7 +65,7 @@ def load_arxiv_raw_data(embeddings, graph=False, text_label=False,
         if split_ids:
             data_dict['split_ids'] = split_list
     if text_label:
-        label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+        label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
         text_label_list = []
         for label in data_dict['label']:
             text_label_list.append(arxiv_category_mapping_dict[label2category['arxiv category'][label.item()]])

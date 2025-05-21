@@ -19,9 +19,9 @@ from torch.utils.data import DataLoader
 import json
 from tensorboardX import SummaryWriter
 
-global_ds_name = 'cora'
+global_ds_name = 'pubmed'
 max_new_tokens = 20
-batch_size = 1
+batch_size = 64
 use_half = True
 if global_ds_name == 'pubmed':
     # all_labels = ['Diabetes Mellitus, Experimental', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2']
@@ -31,7 +31,7 @@ elif global_ds_name == 'cora':
 elif global_ds_name == 'arxiv':
     all_labels = ['Artificial Intelligence', 'Hardware Architecture', 'Computational Complexity', 'Computational Engineering, Finance, and Science', 'Computational Geometry', 'Computation and Language', 'Cryptography and Security', 'Computer Vision and Pattern Recognition', 'Computers and Society', 'Databases', 'Distributed, Parallel, and Cluster Computing', 'Digital Libraries', 'Discrete Mathematics', 'Data Structures and Algorithms', 'Emerging Technologies', 'Formal Languages and Automata Theory', 'General Literature', 'Graphics', 'Computer Science and Game Theory', 'Human-Computer Interaction', 'Information Retrieval', 'Information Theory', 'Machine Learning', 'Logic in Computer Science', 'Multiagent Systems', 'Multimedia', 'Mathematical Software', 'Numerical Analysis', 'Neural and Evolutionary Computing', 'Networking and Internet Architecture', 'Other Computer Science', 'Operating Systems', 'Performance', 'Programming Languages', 'Robotics', 'Symbolic Computation', 'Sound', 'Software Engineering', 'Social and Information Networks', 'Systems and Control']
 else:
-    all_labels = ['Yes', 'Nope']
+    all_labels = ['Yes', 'No']
 
 
 def is_all_label_contained(predicted_sentences):
@@ -55,11 +55,12 @@ class LeftPaddingPredictionCollator(DataCollatorForLanguageModeling):
         )
         batch['attention_mask'] = torch.ones_like(batch['input_ids'])
         batch['attention_mask'][batch['input_ids'] == self.tokenizer.pad_token_id] = 0
-        batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=batch['input_ids'].device) for example in examples]
-        embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
-        batch['embedding_positions'] = []
-        for i in range(len(examples)):
-            batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
+        if 'unaligned_input_embeds' in examples[0].keys():
+            batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=batch['input_ids'].device) for example in examples]
+            embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
+            batch['embedding_positions'] = []
+            for i in range(len(examples)):
+                batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
         return batch
 
 if __name__ == "__main__":
@@ -80,8 +81,10 @@ if __name__ == "__main__":
         This is for Graph Embedding QA prediction Task
     '''
     ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_graph_embedding_QA'.format(global_ds_name))
+    # ds = load_from_disk('datasets_local/json_texts_datasets/pubmed_pure_text_dataset')
     # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_graph_embedding_QA_pure_nodes_with_element_type_count_cot'.format(global_ds_name))
-    if global_ds_name == 'arxiv' or global_ds_name == 'mutag' or global_ds_name == 'molhiv':
+    # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/cora_link_prediction')
+    if global_ds_name == 'arxiv' or global_ds_name == 'mutag' or global_ds_name == 'molhiv' or 'link' in global_ds_name:
         test_set_ids = np.where((np.array(ds['split_set']) == 'test') & (np.array(ds['task_type']) == 'classification'))[0]
     else:
         test_set_ids = np.where((np.array(ds['task_type']) == 'classification'))[0]
@@ -99,6 +102,7 @@ if __name__ == "__main__":
         QA_json = {}
         question_str = dp.pop('question')
         answer_str = dp.pop('answer')
+        # dp.pop('unaligned_input_embeds')
         question_str = question_str.replace(":Diabetes Mellitus, Experimental; Diabetes Mellitus Type 1; Diabetes Mellitus Type 2",
                                             ": Diabetes Type 1; Diabetes Type 2; Diabetes Experiments")
         question_str = question_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
@@ -139,10 +143,13 @@ if __name__ == "__main__":
     # import ipdb;ipdb.set_trace()
    
     use_value_head = False
-    # parent_checkpoint_path = 'ckpts/llama3_2_3B_Instruct/r_16_with_link_eval_test_set2025-05-08 15:35:35.357742'
-    parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_with_link_eval_test_set2025-05-09 01:24:22.768621'
+    # parent_checkpoint_path = 'ckpts/llama3_2_3B_Instruct/value_head_finetune_high_lr_lora_fixed2025-05-10 17:55:20.592514'
+    # parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_graph_understanding_single_ds2025-05-14 14:35:28.475663'
+    parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_no_graph_understanding2025-05-14 21:00:16.209591'
+    parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_graph_understanding_single_ds2025-05-15 00:59:14.267954'
     
-    ckpts_dirs = ['160000','105000']#,'150000','160000','167000']#,'67000','80000']#,'24000','25000']
+    print('check point path:   ', parent_checkpoint_path)
+    ckpts_dirs = ['14000','16000']#,'150000','160000','167000']#,'67000','80000']#,'24000','25000']
     count_dict = {}
     # for ckpt_index in range(10000, 100000,1000):
     for curr_ckpt in ckpts_dirs:
@@ -200,24 +207,25 @@ if __name__ == "__main__":
                 else:
                     batch_input_embeds = peft_model.pretrained_model.get_input_embeddings()(batch_data['input_ids'].to(device))
                 
-                for i in range(len(batch_data['unaligned_inputs_embeds'])):
-                    if use_half:
-                        unaligned_inputs_embeds = batch_data['unaligned_inputs_embeds'][i].to(device).half()
-                    else:
-                        unaligned_inputs_embeds = batch_data['unaligned_inputs_embeds'][i].to(device)
-                    if not use_value_head:
-                        aligned_embeds = peft_model.node_embedding_connect(unaligned_inputs_embeds)
+                if 'unaligned_inputs_embeds' in batch_data.keys():
+                    for i in range(len(batch_data['unaligned_inputs_embeds'])):
+                        if use_half:
+                            unaligned_inputs_embeds = batch_data['unaligned_inputs_embeds'][i].to(device).half()
+                        else:
+                            unaligned_inputs_embeds = batch_data['unaligned_inputs_embeds'][i].to(device)
+                        if not use_value_head:
+                            aligned_embeds = peft_model.node_embedding_connect(unaligned_inputs_embeds)
+                            
+                            # if use_half:
+                            #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device).half())
+                            # else:
+                            #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device))#.half())
+                        else:
+                            aligned_embeds = peft_model.pretrained_model.node_embedding_connect(unaligned_inputs_embeds)
+                            # aligned_embeds = peft_model.pretrained_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device))
                         
-                        # if use_half:
-                        #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device).half())
-                        # else:
-                        #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device))#.half())
-                    else:
-                        aligned_embeds = peft_model.pretrained_model.node_embedding_connect(unaligned_inputs_embeds)
-                        # aligned_embeds = peft_model.pretrained_model.node_embedding_connect(batch_data['unaligned_inputs_embeds'][i].to(device))
-                    
-                    new_position = batch_data['embedding_positions'][i]
-                    batch_input_embeds[i][new_position] = aligned_embeds
+                        new_position = batch_data['embedding_positions'][i]
+                        batch_input_embeds[i][new_position] = aligned_embeds
                 if use_value_head:
                     batch_res = peft_model.generate(
                         inputs_embeds = batch_input_embeds,
@@ -274,7 +282,7 @@ if __name__ == "__main__":
                     y_true.append(0)
                 if "Yes" in tokenizer.decode(preds[i]):
                     y_pred.append(1)
-                elif "Nope" in tokenizer.decode(preds[i]):
+                elif "Nope" in tokenizer.decode(preds[i]) or "No" in tokenizer.decode(preds[i]):
                     y_pred.append(0)
                 else:
                     y_pred.append(-1)
@@ -312,7 +320,7 @@ if __name__ == "__main__":
         # import ipdb; ipdb.set_trace()
         evaluator = Evaluator(name='ogbg-molhiv')
         if use_value_head:
-            roc_auc = evaluator.eval({'y_true':np.expand_dims(np.array(y_true),axis=1),'y_pred':np.expand_dims(np.array(values),axis=1)})['rocauc']
+            roc_auc = 0 # evaluator.eval({'y_true':np.expand_dims(np.array(y_true),axis=1),'y_pred':np.expand_dims(np.array(values),axis=1)})['rocauc']
         else:
             roc_auc = 0
         len_count = torch.tensor(len_count)

@@ -52,11 +52,12 @@ bond_stereochemistry_dict = {
     4: 'STEREOTRANS',
     5: 'STEREOANY',
 }
-root_path = '/data/sharefile/wei/dataset'
+root_path = 'your_local_root_path'
+dataset_name = 'molbbbp'
 if __name__ == "__main__":
     device = torch.device("cuda:0")
     PLM  = SentenceTransformer('all-mpnet-base-v2').to(device)
-    datasets = DglGraphPropPredDataset(name='ogbg-molhiv',root=root_path)
+    datasets = DglGraphPropPredDataset(name='ogbg-{}'.format(dataset_name),root=root_path)
     map_index = {}
     over_all_idx = 0
     dp_list = []
@@ -139,5 +140,5 @@ if __name__ == "__main__":
                     }
                 dp_list.append(dp)
     print("overall number: ",over_all_idx)
-    torch.save(dp_list,root_path+'/ogbg_molhiv/text_to_embedding.bin')
-    torch.save(map_index,root_path+'/ogbg_molhiv/map_index_vector_to_text.bin')
+    torch.save(dp_list,root_path+'/ogbg_{}/text_to_embedding.bin'.format(dataset_name))
+    torch.save(map_index,root_path+'/ogbg_{}/map_index_vector_to_text.bin'.format(dataset_name))

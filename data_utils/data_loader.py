@@ -293,13 +293,13 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         test_dataset = dataset.select(range(len(dataset)-1000, len(dataset)))
     elif 'ArxivPureEmbeds2Prediction_1TokenDataset' in dataset_dir:
         dataset = load_from_disk(dataset_dir)
-        data = DglNodePropPredDataset('ogbn-arxiv',root='/data/sharefile/wei/dataset')
+        data = DglNodePropPredDataset('ogbn-arxiv',root='your_local_root_path')
         idx_split = data.get_idx_split()
         train_dataset = dataset.select(idx_split['train'])
         test_dataset = dataset.select(idx_split['test'])
     elif 'ArxivEmbedsGraphML2Prediction_1TokenDataset_TokenizerLlama-3.2-1B' in dataset_dir:
         dataset = load_from_disk(dataset_dir)
-        data = DglNodePropPredDataset('ogbn-arxiv',root='/data/sharefile/wei/dataset')
+        data = DglNodePropPredDataset('ogbn-arxiv',root='your_local_root_path')
         idx_split = data.get_idx_split()
         train_dataset = dataset.select(idx_split['train'])
         test_dataset = dataset.select(idx_split['test'])

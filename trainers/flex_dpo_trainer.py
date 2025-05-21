@@ -11,7 +11,6 @@ class FlexDPOTrainer(DPOTrainer):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        #Wei Li modified
         self.registered_model_input_keys = registered_model_input_keys
         # self.model.registered_model_input_keys = registered_model_input_keys
     
@@ -102,7 +101,6 @@ class FlexDPOTrainer(DPOTrainer):
             else:
                 model_kwargs["attention_mask"] = attention_mask
             
-            #Wei Li modified
             if self.registered_model_input_keys is not None:
                 for key in self.registered_model_input_keys:
                     if key not in batch.keys():

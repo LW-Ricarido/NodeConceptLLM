@@ -1,7 +1,7 @@
 from google.cloud import bigquery
 import pandas as pd
 import os 
-root_path = 'your_local_root_path/ogbl_citation2/mapping'
+root_path = '/data/sharefile/wei/dataset/ogbl_citation2/mapping'
 
 
 query = """

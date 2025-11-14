@@ -67,6 +67,17 @@ class LLama4Graph(LlamaForCausalLM):
             print(traceback.print_stack())
         
             import ipdb; ipdb.set_trace()
+        if unaligned_inputs_embeds is not None and embedding_positions is None:
+            embedding_positions = []
+            for i in range(input_ids.shape[0]):
+                embedding_positions.append(torch.nonzero(input_ids[i] == self.embedding_mask_id).flatten())
+                if embedding_positions[-1].shape[0] != unaligned_inputs_embeds[i].shape[0]:
+                    import ipdb; ipdb.set_trace()
+        if inputs_embeds is not None and unaligned_inputs_embeds is not None and embedding_positions is None:
+            import traceback
+            print(traceback.print_stack())
+        
+            import ipdb; ipdb.set_trace()
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -87,54 +98,55 @@ class LLama4Graph(LlamaForCausalLM):
                 # for auto casting
                 inputs_embeds[i][embedding_positions[i]] = aligned_input_embeds[i].to(inputs_embeds.dtype)
 
-        if not self.training and self.task_type == 'prediction' and unaligned_inputs_embeds is not None:
+        # if not self.training and self.task_type == 'prediction' and unaligned_inputs_embeds is not None:
             
-            input_lengths = []
-            for i in range(labels.shape[0]):
-                input_lengths.append(torch.nonzero(labels[i] != -100).flatten()[0].item())
-            max_input_length = np.max(input_lengths)
+        #     input_lengths = []
+        #     for i in range(labels.shape[0]):
+        #         input_lengths.append(torch.nonzero(labels[i] != -100).flatten()[0].item())
+        #     max_input_length = np.max(input_lengths)
 
-            new_inputs_embeds = torch.zeros(inputs_embeds.shape[0],max_input_length,inputs_embeds.shape[-1],dtype=inputs_embeds.dtype,device=inputs_embeds.device)
-            new_attention_mask = torch.ones(inputs_embeds.shape[0], max_input_length, dtype=input_ids.dtype, device=inputs_embeds.device)
-            pad_embed = self.model.get_input_embeddings()(self.pad_token_id * torch.ones(1,dtype=input_ids.dtype,device=input_ids.device))
-            max_new_tokens =  torch.sum(labels != -100,dim=1).max().item()
-            for i in range(inputs_embeds.shape[0]):
-                current_input_length = input_lengths[i]
-                new_inputs_embeds[i,max_input_length - current_input_length:] = inputs_embeds[i,:current_input_length]
-                ### Attention!!!: pad for generation for on the left, not right
-                new_inputs_embeds[i, :max_input_length - current_input_length] = pad_embed.repeat(max_input_length - current_input_length,1)
-                new_attention_mask[i, : max_input_length - current_input_length] = 0
-            inputs_embeds = new_inputs_embeds
-            outputs = self.generate(
-                inputs_embeds=inputs_embeds, 
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                output_logits=True, 
-                return_dict_in_generate=True,
-                pad_token_id=self.pad_token_id,
-                attention_mask = new_attention_mask,
-                output_hidden_states=True,
-            )
-            logits = torch.stack(outputs['logits'],dim=1)
-            new_labels = -100 * torch.ones((labels.shape[0], max_new_tokens),dtype=labels.dtype,device=labels.device)
-            for i in range(labels.shape[0]):
-                new_labels[i][:torch.sum(labels[i] != -100)] = labels[i][torch.sum(labels[i] == -100):]
-            if logits.shape[1] != new_labels.shape[1]:
-                pad_logits = torch.zeros((logits.shape[0],new_labels.shape[1] - logits.shape[1],logits.shape[-1]),dtype=logits.dtype,device=logits.device)
-                pad_logits[:,:,self.pad_token_id] = 1
-                logits = torch.cat((logits, pad_logits),dim=1)
-            assert logits.shape[1] == new_labels.shape[1], "Sentence length dose not match, logits: {}, new_labels: {} max_new_tokens:{}".format(logits.shape[1],new_labels.shape[1],max_new_tokens)
-            loss = self.loss_function(
-                logits=logits,
-                labels=new_labels,
-                vocab_size=logits.shape[-1],
-                ** kwargs
-            )
-            return CausalLMOutputWithPast(
-                loss=loss,
-                logits=logits,
-                hidden_states = outputs.hidden_states[0],
-            )
+        #     new_inputs_embeds = torch.zeros(inputs_embeds.shape[0],max_input_length,inputs_embeds.shape[-1],dtype=inputs_embeds.dtype,device=inputs_embeds.device)
+        #     new_attention_mask = torch.ones(inputs_embeds.shape[0], max_input_length, dtype=input_ids.dtype, device=inputs_embeds.device)
+        #     pad_embed = self.model.get_input_embeddings()(self.pad_token_id * torch.ones(1,dtype=input_ids.dtype,device=input_ids.device))
+        #     max_new_tokens =  torch.sum(labels != -100,dim=1).max().item()
+        #     for i in range(inputs_embeds.shape[0]):
+        #         current_input_length = input_lengths[i]
+        #         new_inputs_embeds[i,max_input_length - current_input_length:] = inputs_embeds[i,:current_input_length]
+        #         ### Attention!!!: pad for generation for on the left, not right
+        #         new_inputs_embeds[i, :max_input_length - current_input_length] = pad_embed.repeat(max_input_length - current_input_length,1)
+        #         new_attention_mask[i, : max_input_length - current_input_length] = 0
+        #     inputs_embeds = new_inputs_embeds
+        #     outputs = self.generate(
+        #         inputs_embeds=inputs_embeds, 
+        #         max_new_tokens=max_new_tokens,
+        #         do_sample=False,
+        #         output_logits=True, 
+        #         return_dict_in_generate=True,
+        #         pad_token_id=self.pad_token_id,
+        #         attention_mask = new_attention_mask,
+        #         output_hidden_states=True,
+        #     )
+        #     logits = torch.stack(outputs['logits'],dim=1)
+        #     new_labels = -100 * torch.ones((labels.shape[0], max_new_tokens),dtype=labels.dtype,device=labels.device)
+        #     for i in range(labels.shape[0]):
+        #         new_labels[i][:torch.sum(labels[i] != -100)] = labels[i][torch.sum(labels[i] == -100):]
+        #     if logits.shape[1] != new_labels.shape[1]:
+        #         pad_logits = torch.zeros((logits.shape[0],new_labels.shape[1] - logits.shape[1],logits.shape[-1]),dtype=logits.dtype,device=logits.device)
+        #         pad_logits[:,:,self.pad_token_id] = 1
+        #         logits = torch.cat((logits, pad_logits),dim=1)
+        #     assert logits.shape[1] == new_labels.shape[1], "Sentence length dose not match, logits: {}, new_labels: {} max_new_tokens:{}".format(logits.shape[1],new_labels.shape[1],max_new_tokens)
+        #     import ipdb;ipdb.set_trace()
+        #     loss = self.loss_function(
+        #         logits=logits,
+        #         labels=new_labels,
+        #         vocab_size=logits.shape[-1],
+        #         ** kwargs
+        #     )
+        #     return CausalLMOutputWithPast(
+        #         loss=loss,
+        #         logits=logits,
+        #         hidden_states = outputs.hidden_states[0],
+        #     )
 
 
         
@@ -179,7 +191,6 @@ class LLama4Graph(LlamaForCausalLM):
                 inputs_embeds[i][embedding_positions[i]] = aligned_embeds[i]
             outputs = super().generate(
                 inputs_embeds = inputs_embeds,
-                max_new_tokens = 20,
                 **kwargs
             )
             return outputs
@@ -188,7 +199,7 @@ class LLama4Graph(LlamaForCausalLM):
 
 
 class LLama4GraphWithValueHead(AutoModelForCausalLMWithValueHead):
-    
+    base_model_prefix = 'pretrained_model'
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, is_for_sft=True,positive_id=9642, *model_args, **kwargs):
         model =  super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
@@ -259,3 +270,6 @@ class LLama4GraphWithValueHead(AutoModelForCausalLMWithValueHead):
             generated_tokens = torch.stack(outputs['logits'],dim=1).argmax(dim=-1)
             return generated_tokens, classification_value
         return super().generate(*args, **kwargs)
+
+    def score(self,hidden_state):
+        return self.v_head(hidden_state)

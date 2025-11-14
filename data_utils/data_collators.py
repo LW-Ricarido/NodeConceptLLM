@@ -82,6 +82,53 @@ class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
         if 'unaligned_input_embeds' in examples[0].keys():
             for example in examples:
                 embedding_length.add(len(example['unaligned_input_embeds']))
+            # if embedding_length == {1}:
+            #     if self.use_fp16:
+            #         batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device).half() for example in examples])
+            #     else:
+            #         batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device) for example in examples])
+            # else:
+            if self.use_fp16:
+                batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device).half() for example in examples]
+            else:
+                batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device) for example in examples]
+            embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
+            batch['embedding_positions'] = []
+            for i in range(len(examples)):
+                batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
+        # batch['embedding_positions'] = [torch.tensor(example['embedding_positions'],dtype=torch.long,device=labels.device) for example in examples]
+        return batch
+        # return super().torch_call(examples)
+
+class LeftPaddingInstructEmbedsPretrainWithLabelCollator(DataCollatorForLanguageModeling):
+    def __init__(self,use_fp16: bool = False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_fp16 = use_fp16
+    def torch_call(self, examples):
+        '''
+            examples.keys:
+                - input_ids: list[int]
+                - labels: list[int]
+                - embedding_positions: list[int]
+                - unaligned_input_embeds: list[tensor]
+                
+        '''
+        batch = pad_without_fast_tokenizer_warning(
+            self.tokenizer, {'input_ids':[example['input_ids'] for example in examples]}, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of,padding_side="left"
+        )
+        labels = self.tokenizer([example['answer'] for example in examples],
+                                       padding=True,return_tensors='pt')['input_ids']
+        
+        # labels = pad_without_fast_tokenizer_warning(
+        #     self.tokenizer, {'inputs':[example['answer'] for example in examples]}, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of
+        # )
+        # for i in range(labels.shape[0]):
+        #     labels[i,:len(examples[i]['labels'])] = torch.tensor(examples[i]['labels'],dtype=labels.dtype,device=labels.device)
+        batch['labels'] = labels
+        embedding_length = set()
+        if 'unaligned_input_embeds' in examples[0].keys():
+            for example in examples:
+                embedding_length.add(len(example['unaligned_input_embeds']))
             if embedding_length == {1}:
                 if self.use_fp16:
                     batch['unaligned_inputs_embeds'] = torch.stack([torch.tensor(example['unaligned_input_embeds'][0],device=labels.device).half() for example in examples])
@@ -98,7 +145,6 @@ class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
                 batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
         # batch['embedding_positions'] = [torch.tensor(example['embedding_positions'],dtype=torch.long,device=labels.device) for example in examples]
         return batch
-        # return super().torch_call(examples)
 
 class Embeds2PredictionCollator(DataCollatorForLanguageModeling):
     

@@ -5,9 +5,11 @@ import torch.nn as nn
 from transformers import CLIPModel, CLIPProcessor
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
-from ogb.nodeproppred import DglNodePropPredDataset
+# from ogb.nodeproppred import DglNodePropPredDataset
 import numpy as np
-import os
+import os,re,sys
+sys.path.append(os.path.abspath(os.path.curdir))
+from data_utils.prompt_str import embedding_mask_str, begin_of_edges_str
 
 
 def getCoraLLMPretrainDataset(text_path,graph_path, tokenizer:AutoTokenizer):
@@ -174,9 +176,164 @@ def prepareArxivMultiTokenDataset(tokenizer:AutoTokenizer, data_dir,token_number
         dp_list.append(dp)
     dataset = Dataset.from_list(dp_list)
     dataset.save_to_disk('datasets_local/ArxivEmbeds2Text_{}TokensDataset'.format(token_number))
+
+def change_node_order(ds, change_zero=False):
+    def order_change_map(dp):
+        unaligned_input_embeds = np.array(dp['unaligned_input_embeds'])
+        new_unaligned_input_embeds = np.zeros_like(unaligned_input_embeds)
+        order_map = {}
+        if not change_zero:
+            new_unaligned_input_embeds[0] = unaligned_input_embeds[0]
+            new_order = (torch.randperm(unaligned_input_embeds.shape[0] - 1) + 1).tolist()
+            for j in range(len(new_order)):
+                order_map[str(j + 1)] = str(new_order[j])
+                new_unaligned_input_embeds[j+1] = unaligned_input_embeds[new_order[j]]
+        else:
+            new_order = (torch.randperm(unaligned_input_embeds.shape[0])).tolist()
+            for j in range(len(new_order)):
+                order_map[str(j)] = str(new_order[j])
+                new_unaligned_input_embeds[j] = unaligned_input_embeds[new_order[j]]
+        before_edge_str, after_edge_str = dp['question'].split(begin_of_edges_str)
+        digits = re.split(r'\D+', after_edge_str)
+        delimiters = re.findall(r'\D+', after_edge_str)
+        remapped_digits = [order_map.get(token, token) for token in digits]
+        result = before_edge_str + begin_of_edges_str + ''.join(t + d for t, d in zip(remapped_digits, delimiters)) + (remapped_digits[-1] if len(remapped_digits) > len(delimiters) else '')
         
+        dp['question'] = result
+        dp['unaligned_input_embeds'] = new_unaligned_input_embeds        
+        return dp
+    return ds.map(order_change_map,num_proc=32)
+ 
 def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
-    if 'pretrain' in dataset_dir:
+    if 'connector_pretrain' in dataset_dir:
+        # pretrained_datasets = []
+        # for dir_name  in os.listdir('datasets_local/connector_pretrain'):
+        #     pretrained_datasets.append(load_from_disk(os.path.join('datasets_local/connector_pretrain',dir_name)))
+        # train_dataset = concatenate_datasets(pretrained_datasets)
+        train_dataset = load_from_disk('datasets_local/all_connector_pretrain')
+        test_dataset = train_dataset.select(range(25355,25455))
+    else:
+        raise NotImplementedError
+    # train_dataset.shuffle(seed=41)
+    # test_dataset.shuffle(seed=41)
+    return train_dataset, test_dataset
+def old_load_dataset(dataset_dir,tokenizer:AutoTokenizer):
+    if 'new_pretrain' in dataset_dir:
+        pretrained_datasets = []
+        for dir_name in os.listdir('datasets_local/new_reasoning_datasets'):
+            if "pretrain" in dir_name:
+                ds = load_from_disk(os.path.join('datasets_local/new_reasoning_datasets',dir_name))
+                task_types = np.array(ds['type'])
+                ds = ds.select(np.where(task_types != 'category')[0])
+                pretrained_datasets.append(ds)
+        train_dataset = concatenate_datasets(pretrained_datasets)
+        test_dataset = train_dataset.select(range(100))
+    elif "reasoning_pretrain" in dataset_dir:
+        train_dataset = load_from_disk('datasets_local/new_reasoning_datasets/arxiv_graph_structure_understanding_by_title')
+        train_dataset = concatenate_datasets([train_dataset, load_from_disk('datasets_local/new_reasoning_datasets/arxiv_pretrain')])
+        test_dataset = train_dataset.select(range(100))
+    elif 'rl_cold_start' in dataset_dir:
+        train_dataset = load_from_disk('datasets_local/with_node_index/zero_shot_right_ds')
+        test_dataset = train_dataset.select(range(100))
+    elif 'structure_understanding' in dataset_dir:
+        arxiv_dataset = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
+        task_types = np.array(arxiv_dataset['task_type'])
+        non_classification_train_ids = np.where(task_types != 'classification')[0]
+        train_dataset = arxiv_dataset.select(non_classification_train_ids)
+        np.random.shuffle(non_classification_train_ids)
+        test_dataset = arxiv_dataset.select(non_classification_train_ids[0:1000])
+    elif 'order_test' in dataset_dir:
+        train_datasets = []
+        test_datasets = []
+        # zero_order_ds = load_from_disk('datasets_local/with_node_index/arxiv')
+        order_changed_ds = load_from_disk('datasets_local/with_node_index/arxiv_order_changed')
+        # train_list = np.where(np.array(zero_order_ds['split_set']) == 'train')[0].tolist()
+        # test_list = np.where(np.array(zero_order_ds['split_set']) == 'valid')[0].tolist()
+        # train_datasets.append(zero_order_ds.select(train_list))
+        # test_datasets.append(zero_order_ds.select(test_list[0:200]))
+        
+        
+        
+        train_list = np.where(np.array(order_changed_ds['split_set']) == 'train')[0].tolist()
+        test_list = np.where(np.array(order_changed_ds['split_set']) == 'valid')[0].tolist()[0:200]
+        train_datasets.append(order_changed_ds.select(train_list))
+        test_datasets.append(order_changed_ds.select(test_list))
+        
+        
+        arxiv_dataset = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
+        
+        splits = np.array(arxiv_dataset['split_set'])
+        task_types = np.array(arxiv_dataset['task_type'])
+        
+        pure_classification_train_ids = np.where((splits == 'train') & (task_types == 'classification'))[0].tolist()
+        arxiv_train_classification_ds = arxiv_dataset.select(pure_classification_train_ids)
+        
+        non_classificaton_ids = np.where((task_types != 'classification'))[0].tolist()[:len(pure_classification_train_ids)]
+        arxiv_train_non_classification_ds = arxiv_dataset.select(non_classificaton_ids)
+        
+        arxiv_valid_ids = np.where((splits == 'test') & (task_types == 'classification'))[0].tolist()[0:200]
+        arxiv_valid_ds = arxiv_dataset.select(arxiv_valid_ids)
+        
+        train_datasets.append(arxiv_train_classification_ds)
+        train_datasets.append(arxiv_train_non_classification_ds)
+        test_datasets.append(arxiv_valid_ds)
+        
+        
+        
+        train_dataset = concatenate_datasets(train_datasets)
+        test_dataset = concatenate_datasets(test_datasets)
+        
+    elif 'rl_full_batch' in dataset_dir:
+        train_datasets = []
+        test_datasets = []
+        arxiv_dataset = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
+        train_list = np.where((np.array(arxiv_dataset['split_set']) == 'train') & (np.array(arxiv_dataset['task_type']) == 'classification'))[0].tolist()
+        test_list = np.where((np.array(arxiv_dataset['split_set']) == 'valid') & (np.array(arxiv_dataset['task_type']) == 'classification'))[0].tolist()
+        train_datasets.append(arxiv_dataset.select(train_list))
+        test_datasets.append(arxiv_dataset.select(test_list[0:20]))
+        
+        # pubmed_dataset = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/pubmed_graph_embedding_QA')
+        # train_list = np.where(np.array(pubmed_dataset['split_set']) == 'train')[0].tolist()
+        # test_list = np.where(np.array(pubmed_dataset['split_set']) == 'valid')[0].tolist()
+        # train_datasets.append(pubmed_dataset.select(train_list))
+        # test_datasets.append(pubmed_dataset.select(test_list[0:20]))
+        
+        # cora_dataset = load_from_disk('datasets_local/with_node_index/cora')
+        # train_list = np.where(np.array(cora_dataset['split_set']) == 'train')[0].tolist()
+        # test_list = np.where(np.array(cora_dataset['split_set']) == 'valid')[0].tolist()
+        # train_datasets.append(cora_dataset.select(train_list))
+        # test_datasets.append(cora_dataset.select(test_list[0:10]))
+        
+        train_dataset = concatenate_datasets(train_datasets)
+        test_dataset = concatenate_datasets(test_datasets)
+        
+    elif 'rl_explore' in dataset_dir:
+        train_datasets = [] 
+        test_datasets = []
+        arxiv_dataset = load_from_disk('datasets_local/with_node_index/arxiv_reasoning_based_on_llama3.2')
+        train_list = np.where(np.array(arxiv_dataset['split_set']) == 'train')[0].tolist()
+        test_list = train_list[0:100]
+        train_datasets.append(arxiv_dataset.select(train_list))
+        test_datasets.append(arxiv_dataset.select(test_list))
+        
+        pubmed_dataset = load_from_disk('datasets_local/with_node_index/pubmed_reasoning_based_on_llama3.2')
+        train_list = np.where(np.array(pubmed_dataset['split_set']) == 'train')[0].tolist()
+        test_list = train_list[0:50] 
+        train_datasets.append(pubmed_dataset.select(train_list))
+        test_datasets.append(pubmed_dataset.select(test_list))
+        # train_datasets.append(load_from_disk('datasets_local/with_node_index/cora'))
+        train_dataset = concatenate_datasets(train_datasets)
+        # train_dataset.shuffle(seed = 354)
+        test_dataset = concatenate_datasets(test_datasets)
+    elif 'rl_sft_warmup' in dataset_dir:
+        train_datasets = []
+        
+        train_datasets.append(load_from_disk('datasets_local/with_node_index/arxiv_reasoning_based_on_QwQ'))
+        # train_datasets.append(load_from_disk('datasets_local/with_node_index/arxiv_reasoning_based_on_llama3.2'))
+        train_dataset = concatenate_datasets(train_datasets)
+        # train_dataset.shuffle(seed=354)
+        test_dataset = train_dataset.select(np.arange(100))
+    elif 'pretrain' in dataset_dir:
         pretrained_datasets = []
         for dir_name in os.listdir('datasets_local/json_texts_datasets'):
             if 'pretrain' in dir_name:
@@ -191,13 +348,41 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         task_types = np.array(arxiv_dataset['task_type'])
         
         pure_classification_train_ids = np.where((splits == 'train') & (task_types == 'classification'))[0].tolist()
-        arxiv_train_classification_ds = arxiv_dataset.select(pure_classification_train_ids)
+        # arxiv_train_classification_ds = arxiv_dataset.select(pure_classification_train_ids)
+        
+        arxiv_new_ds = load_from_disk('datasets_local/with_node_index/arxiv')
+        splits = np.array(arxiv_new_ds['split_set'])
+        pure_classification_train_ids = np.where((splits == 'train'))[0].tolist()
+        arxiv_train_classification_ds = arxiv_new_ds.select(pure_classification_train_ids)
+        
+        arxiv_change_order_train_classification_ds = change_node_order(arxiv_train_classification_ds,False)
+        arxiv_zero_change_order_train_classification_ds = change_node_order(arxiv_train_classification_ds, True)
+        
+        arxiv_train_classification_ds = concatenate_datasets([arxiv_train_classification_ds, arxiv_change_order_train_classification_ds, arxiv_zero_change_order_train_classification_ds])
         
         non_classificaton_ids = np.where((task_types != 'classification'))[0].tolist()[:len(pure_classification_train_ids)]
         arxiv_train_non_classification_ds = arxiv_dataset.select(non_classificaton_ids)
         
-        arxiv_valid_ids = np.where((splits == 'test') & (task_types == 'classification'))[0].tolist()#[0:3000]
-        arxiv_valid_ds = arxiv_dataset.select(arxiv_valid_ids)
+        # truncated = np.array(arxiv_new_ds['truncated'])
+        arxiv_valid_ids = np.where((splits == 'test'))[0].tolist()
+        np.random.shuffle(arxiv_valid_ids)
+        arxiv_valid_ids = arxiv_valid_ids[0:3000]
+        arxiv_valid_ds = arxiv_new_ds.select(arxiv_valid_ids)
+
+        # arxiv_title_recovery_ds = load_from_disk('datasets_local/with_node_index/arxiv_title_recovery')
+        # split = np.array(arxiv_title_recovery_ds['split_set'])
+        # recovery_list = np.where((split == 'train'))[0]
+        # arxiv_title_recovery_ds = arxiv_title_recovery_ds.select(recovery_list)
+        # arxiv_zero_change_title_recovery_ds = change_node_order(arxiv_title_recovery_ds, True)
+        
+        # arxiv_train_non_classification_ds = concatenate_datasets([arxiv_train_classification_ds, arxiv_title_recovery_ds, arxiv_zero_change_title_recovery_ds])
+        
+        
+        
+        # arxiv_change_order_test_classification_ds = change_node_order(arxiv_valid_ds, False)
+        # arxiv_zero_change_order_test_classification_ds = change_node_order(arxiv_valid_ds, True)
+        
+        # arxiv_valid_ds = concatenate_datasets([arxiv_valid_ds, arxiv_change_order_test_classification_ds, arxiv_zero_change_order_test_classification_ds])
         
         ### molhiv
         molhiv_positive_ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/molhiv_graph_embedding_QA_pure_nodes_with_element_type_count_cot_pure_positive')
@@ -293,13 +478,13 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         test_dataset = dataset.select(range(len(dataset)-1000, len(dataset)))
     elif 'ArxivPureEmbeds2Prediction_1TokenDataset' in dataset_dir:
         dataset = load_from_disk(dataset_dir)
-        data = DglNodePropPredDataset('ogbn-arxiv',root='your_local_root_path')
+        data = DglNodePropPredDataset('ogbn-arxiv',root='/data/sharefile/wei/dataset')
         idx_split = data.get_idx_split()
         train_dataset = dataset.select(idx_split['train'])
         test_dataset = dataset.select(idx_split['test'])
     elif 'ArxivEmbedsGraphML2Prediction_1TokenDataset_TokenizerLlama-3.2-1B' in dataset_dir:
         dataset = load_from_disk(dataset_dir)
-        data = DglNodePropPredDataset('ogbn-arxiv',root='your_local_root_path')
+        data = DglNodePropPredDataset('ogbn-arxiv',root='/data/sharefile/wei/dataset')
         idx_split = data.get_idx_split()
         train_dataset = dataset.select(idx_split['train'])
         test_dataset = dataset.select(idx_split['test'])
@@ -470,8 +655,8 @@ def load_dataset(dataset_dir,tokenizer:AutoTokenizer):
         
     else:
         raise ValueError('dataset: {} not found'.format(dataset_dir))
-    train_dataset.shuffle(seed=42)
-    test_dataset.shuffle(seed=42)
+    # train_dataset.shuffle(seed=42)
+    # test_dataset.shuffle(seed=42)
     return train_dataset, test_dataset
 
 

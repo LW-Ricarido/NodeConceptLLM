@@ -176,7 +176,7 @@ def prepare_cora_pure_embed_prediction_dataset(token_size,graph:dgl.DGLGraph,tok
 def prepare_arxiv_pure_embed_prediction_dataset(token_size,graph:dgl.DGLGraph, tokenizer):
     token_embeds_ds = load_from_disk('datasets_local/ArxivEmbeds2Text_{}TokensDataset'.format(token_size))
     dp_list = []
-    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     prompt_text = "This is the embedding of a research paper. Please classify the paper into one of the following categories based on its content:"
     for key in arxiv_category_mapping_dict.keys():
         prompt_text += " {};".format(arxiv_category_mapping_dict[key])
@@ -200,7 +200,7 @@ def prepare_arxiv_pure_embed_prediction_dataset(token_size,graph:dgl.DGLGraph, t
 def prepare_arxiv_embed_graph_prediction_dataset(token_size, graph: dgl.DGLGraph, tokenizer, graphML_dataset, tokenizer_name):
     token_embeds_ds = load_from_disk('datasets_local/ArxivEmbeds2Text_{}TokensDataset'.format(token_size))
     dp_list = []
-    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     prompt_text = "This is the embedding of a research paper."
     classify_text = "Please classify the first node into one of the following categories based on its content:"
     for key in arxiv_category_mapping_dict.keys():
@@ -235,7 +235,7 @@ def filter_out_bos_token_id(for_filter_list, bos_token_id):
       
 if __name__ == "__main__":
     from ogb.nodeproppred import DglNodePropPredDataset
-    data = DglNodePropPredDataset('ogbn-arxiv',root='your_local_root_path')
+    data = DglNodePropPredDataset('ogbn-arxiv',root='/data/sharefile/wei/dataset')
     graph, labels = data[0]
     labels = labels.squeeze()
     graph.ndata['label'] = labels

@@ -15,7 +15,8 @@ from ogb.graphproppred  import DglGraphPropPredDataset
 import sys
 sys.path.append(os.path.abspath(os.path.curdir))
 from data_utils.prompt_str import embedding_mask_str, begin_of_nodes_str, end_of_nodes_str, begin_of_edges_str, end_of_edges_str, one_edge_str
-from data_utils.load_raw_data import load_arxiv_raw_data, arxiv_category_mapping_dict, load_cora_raw_data, cora_text_label_list, load_pubmed_raw_data, pubmed_text_label_list
+from data_utils.load_raw_data import *
+# load_arxiv_raw_data, arxiv_category_mapping_dict, load_cora_raw_data, cora_text_label_list, load_pubmed_raw_data, pubmed_text_label_list
 import periodictable
 import re
 
@@ -56,16 +57,16 @@ def mask_out_question_label(labels, start_header_id, assistant_id, end_header_id
             my_cnter += 1
     return labels
 
-def pretrain_prepare_dp(json_for_template, embedding,tokenizer, embedding_mask_id, start_header_id, assistant_id, end_header_id, eot_id):
-        input_text = tokenizer.apply_chat_template(json_for_template,tokenize=False)
-        dp = {}
-        dp['input_ids'] = tokenizer.encode(input_text, add_special_tokens=False)
-        dp['labels'] = dp['input_ids'].copy()
-        dp['embedding_positions'] = [ i for i,x in enumerate(dp['input_ids']) if x == embedding_mask_id]
-        dp['input_ids'].index(embedding_mask_id)
-        dp['labels'] = mask_out_question_label(dp['labels'], start_header_id, assistant_id, end_header_id, eot_id)
-        dp['unaligned_input_embeds'] = [embedding]
-        return dp
+# def pretrain_prepare_dp(json_for_template, embedding,tokenizer, embedding_mask_id, start_header_id, assistant_id, end_header_id, eot_id):
+#         input_text = tokenizer.apply_chat_template(json_for_template,tokenize=False)
+#         dp = {}
+#         dp['input_ids'] = tokenizer.encode(input_text, add_special_tokens=False)
+#         dp['labels'] = dp['input_ids'].copy()
+#         dp['embedding_positions'] = [ i for i,x in enumerate(dp['input_ids']) if x == embedding_mask_id]
+#         dp['input_ids'].index(embedding_mask_id)
+#         dp['labels'] = mask_out_question_label(dp['labels'], start_header_id, assistant_id, end_header_id, eot_id)
+#         dp['unaligned_input_embeds'] = [embedding]
+#         return dp
 
 def prepare_graph_QA_dp(embeddings, input_ids, tokenizer, task_type, is_truncated,split_set, embedding_mask_id, start_header_id, assistant_id, end_header_id, eot_id,task_level='node'):
         dp = {}
@@ -81,16 +82,16 @@ def prepare_graph_QA_dp(embeddings, input_ids, tokenizer, task_type, is_truncate
         dp['task_level'] = task_level
         return dp
 
-def prepare_pretrain_dataset(tokenizer,tokenizer_name,dataset_name):
+def prepare_pretrain_dataset(dataset_name,node_type='citation'):
     # Load the dataset
     if 'arxiv' in dataset_name:
-        raw_texts = torch.load('your_local_root_path/ogbn_arxiv/raw_text.bin',map_location='cpu')
-        text_embeddings = torch.load('your_local_root_path/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
-        data = DglNodePropPredDataset('ogbn-arxiv', root='your_local_root_path')
+        raw_texts = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_text.bin',map_location='cpu')
+        text_embeddings = torch.load('/data/sharefile/wei/dataset/ogbn_arxiv/raw_tensor.pt',map_location='cpu')
+        data = DglNodePropPredDataset('ogbn-arxiv', root='/data/sharefile/wei/dataset')
         graph, label = data[0]
         test_list = data.get_idx_split()['test']
     elif 'cora' in dataset_name:
-        raw_data = torch.load('datasets_local/cora_embedding_to_text.pt',map_location='cpu')
+        raw_data = torch.load('datasets_local/cora_embedding_to_text.pt',map_location='cpu',weights_only=False)
         raw_texts = [data['label'] for data in raw_data]
         text_embeddings = torch.stack([torch.tensor(data['input_embedding']) for data in raw_data])
         test_list = [i for i in range(len(raw_data))]
@@ -99,79 +100,151 @@ def prepare_pretrain_dataset(tokenizer,tokenizer_name,dataset_name):
         raw_texts = [data['label'] for data in raw_data]
         text_embeddings = torch.stack([torch.tensor(data['input_embedding']) for data in raw_data])
         test_list = [i for i in range(len(raw_data))]
+    elif 'products' in dataset_name:
+        raw_texts = torch.load('/data/sharefile/wei/dataset/ogbn_products/raw_text.bin',map_location='cpu',weights_only=False)
+        text_embeddings = torch.load('/data/sharefile/wei/dataset/ogbn_products/raw_tensor.bin',map_location='cpu',weights_only=False)
+        data = DglNodePropPredDataset('ogbn-products',root='/data/sharefile/wei/dataset')
+        graph, label = data[0]
+        test_list = data.get_idx_split()['test']
+    elif 'WN18RR' in dataset_name:
+        raw_texts = torch.load('/data/sharefile/wei/dataset/WN18RR/raw_text.bin',map_location='cpu', weights_only=False)
+        text_embeddings = torch.load('/data/sharefile/wei/dataset/WN18RR/raw_tensor.bin',map_location='cpu', weights_only=False)
+    elif "MSRC21" in dataset_name:
+        raw_texts = torch.load('datasets_local/MSRC21_Node_raw_text.bin',map_location='cpu', weights_only=False)
+        text_embeddings = torch.load('datasets_local/MSRC21_Node_raw_tensor.bin',map_location='cpu', weights_only=False)
     else:
         raise NotImplementedError
     dp_list = []
-    start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
 
     
     with tqdm(range(len(raw_texts))) as pbar:
         for idx in pbar:
-            title, abstract = raw_texts[idx].split('\n')
-            embedding = text_embeddings[idx]
-            ### title question
-            json_for_template = [
-                {
-                    "role":"user",
-                    "content":"This {} is embedding of a paper. What's the title of this paper?".format(embedding_mask_str)
-                 },
-                {
-                    "role":"assistant",
-                    "content":"The title of this paper is: {}.".format(title.replace('Title: ','',1))
-                },
-                # {
-                #     "role":"user",
-                #     "content": "This is a test question."
-                # },
-                # {
-                #     "role":"assistant",
-                #     'content': "This is a test answer."
-                # }
-                
-            ]
-            
-            dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
-            dp_list.append(dp)
-            ### abstract question
-            json_for_template = [
-                {
-                    "role":"user",
-                    "content":"This {} is embedding of a paper. What's the abstract of this paper?".format(embedding_mask_str)
-                 },
-                {
-                    "role":"assistant",
-                    "content":"The abstract of this paper is: {}.".format(abstract.replace('Abstract: ','',1))
-                }
-            ]
-            dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
-            dp_list.append(dp)
-            if idx not in test_list:
-                ### category question
-                json_for_template = [
-                    {
-                        "role":"user",
-                        "content":"This {} is embedding of a paper. What's the category of this paper?".format(embedding_mask_str)
-                     },
-                    {
-                        "role":"assistant",
-                        "content":"The category of this paper is: {}.".format(arxiv_category_mapping_dict[label2category['arxiv category'][label[idx].item()]])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+            if node_type == 'citation':
+                title, abstract = raw_texts[idx].split('\n')
+                embedding = text_embeddings[idx]
+                ### title question
+                # json_for_template = [
+                #     {
+                #         "role":"user",
+                #         "content":"This {} is embedding of a paper. What's the title of this paper?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role":"assistant",
+                #         "content":"The title of this paper is: {}.".format(title.replace('Title: ','',1))
+                #     },
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of a paper. What's the title of this paper?".format(
+                    embedding_mask_str
+                )
+                dp['answer'] = "The title of this paper is: {}.".format(title.replace("Title: ",'',1))
+                dp['original_node_idx'] = [idx]
                 dp_list.append(dp)
+                
+
+                ### abstract question
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of a paper. What's the abstract of this paper?".format(embedding_mask_str)
+                dp['answer'] = "The abstract of this paper is: {}.".format(abstract.replace('Abstract: ','',1))
+                dp['original_node_idx'] = [idx]
+                dp_list.append(dp)
+                # json_for_template = [
+                #     {
+                #         "role":"user",
+                #         "content":"This {} is embedding of a paper. What's the abstract of this paper?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role":"assistant",
+                #         "content":"The abstract of this paper is: {}.".format(abstract.replace('Abstract: ','',1))
+                #     }
+                # ]
+                if idx not in test_list:
+                    ### category question
+                    dp = {}
+                    dp['unaligned_input_embeds'] = [embedding]
+                    dp['question'] = "This {} is embedding of a paper. What's the category of this paper?".format(embedding_mask_str)
+                    dp['answer'] = "The category of this paper is: {}.".format(arxiv_category_mapping_dict[label2category['arxiv category'][label[idx].item()]])
+                    dp['original_node_idx'] = [idx]
+                    dp_list.append(dp)
+                    # json_for_template = [
+                    #     {
+                    #         "role":"user",
+                    #         "content":"This {} is embedding of a paper. What's the category of this paper?".format(embedding_mask_str)
+                    #     },
+                    #     {
+                    #         "role":"assistant",
+                    #         "content":"The category of this paper is: {}.".format(arxiv_category_mapping_dict[label2category['arxiv category'][label[idx].item()]])
+                    #     }
+                    # ]
         
+            elif node_type == 'product':
+                text_list = raw_texts[idx]['text'].split('Product description:')
+                if len(text_list) == 2:
+                    product_name = text_list[0]
+                    product_des = text_list[1]
+                else:
+                    product_name = text_list[0]
+                    product_des = ''
+                    for k in range(1,len(text_list)):
+                        product_des += text_list[k]
+                embedding = text_embeddings[idx]
+                ### product name 
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of a product. What's the name of this product?".format(embedding_mask_str)
+                dp['answer'] = "The name of this product is: {}.".format(product_name.replace("Product name: ",'', 1))
+                dp['original_node_idx'] = [idx]
+                dp_list.append(dp)
+                ### product description
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of a product. What's the product description of this product?".format(embedding_mask_str)
+                dp['answer'] = "The description of this product is: {}".format(product_des)
+                dp['original_node_idx'] = [idx]
+                dp_list.append(dp)
+                if idx not in test_list and np.random.rand() > 0.8:
+                    dp = {}
+                    dp['unaligned_input_embeds'] = [embedding]
+                    dp['question'] = "This {} is the embedding of a product. What's the category of this product?".format(embedding_mask_str)
+                    dp['answer'] = "The category of this product is: {}.".format(products_category_mapping_dict[label[idx].item()])
+                    dp['original_node_idx']= [idx]
+                    dp_list.append(dp)
+            elif node_type == 'knowledge graph':
+                name, description = raw_texts[idx].split('. Entity Description: ')
+                embedding = text_embeddings[idx]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of entity in a knowledge graph. What's the name of this entity?".format(embedding_mask_str)
+                dp['answer'] = "The name of this entity is: {}.".format(name)
+                dp_list.append(dp)
+                
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of entity in a knowledge graph. What's the description of this entity?".format(embedding_mask_str)
+                dp['answer'] = "The description of this entity is: {}".format(description)
+                dp_list.append(dp)
+            elif "image":
+                embedding = text_embeddings[idx]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is the embedding of an image superpixel. What's the type of this superpixel?".format(embedding_mask_str)
+                dp['answer'] = "The type of this superpixel is: {}".format(raw_texts[idx].replace('Image Superpixel: ',''))
+                dp_list.append(dp)
+            else:
+                raise NotImplementedError
     dataset = Dataset.from_list(dp_list)
-    if not os.path.exists(os.path.join('datasets_local',tokenizer_name)):
-        os.makedirs(os.path.join('datasets_local',tokenizer_name))
-    dataset.save_to_disk(os.path.join('datasets_local',tokenizer_name,dataset_name))
+    if not os.path.exists(os.path.join('datasets_local/connector_pretrain')):
+        os.makedirs(os.path.join('datasets_local/connector_pretrain'))
+    dataset.save_to_disk(os.path.join('datasets_local/connector_pretrain',dataset_name))
     
-def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
-    text_to_embedding = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
-    map_idx = torch.load('your_local_root_path/ogbg_molhiv/map_index_vector_to_text.bin', map_location='cpu')
+def prepare_molhiv_pretrain_dataset(dataset_name):
+    text_to_embedding = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
+    map_idx = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/map_index_vector_to_text.bin', map_location='cpu')
     dp_list = []
-    start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     with tqdm(range(len(map_idx.keys()))) as pbar:
         key_list = list(map_idx.keys())
         for i in pbar:
@@ -179,19 +252,22 @@ def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
             embedding = text_to_embedding[i]['embedding']
             if len(curr_key) == 9:
                 ### element task
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. What the element type of this atom?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "This atom is {}.".format(text_to_embedding[i]['element_name'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. What the element type of this atom?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "This atom is {}.".format(text_to_embedding[i]['element_name'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. What the element type of this atom?".format(embedding_mask_str)
+                dp['answer'] = "This atom is {}.".format(text_to_embedding[i]['element_name'])
                 dp_list.append(dp)
-                
+                                
                 ### chirality task 
                 if np.random.rand() < 0.1:
                     json_for_template = [
@@ -204,81 +280,101 @@ def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
                             "content": "The chirality type of this atom is {}.".format(text_to_embedding[i]['chirality'])
                         }
                     ]
-                    dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                    dp = {}
+                    dp['unaligned_input_embeds'] = [embedding]
+                    dp['question'] = "This {} is embedding of an atom in a molecular. What the chirality type of this atom?".format(embedding_mask_str)
+                    dp['answer'] = "The chirality type of this atom is {}.".format(text_to_embedding[i]['chirality'])
                     dp_list.append(dp)
                 
                 ### formal_charge task
                 
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. What the formal charge of this atom?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The formal charge of this atom is {}.".format(text_to_embedding[i]['formal_charge'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. What the formal charge of this atom?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The formal charge of this atom is {}.".format(text_to_embedding[i]['formal_charge'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. What the formal charge of this atom?".format(embedding_mask_str)
+                dp['answer'] = "The formal charge of this atom is {}.".format(text_to_embedding[i]['formal_charge'])
                 dp_list.append(dp)
                 
                 ### number of h task
                 
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. How many hydrogen atoms does this atom bond with?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_h'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. How many hydrogen atoms does this atom bond with?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_h'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. How many hydrogen atoms does this atom bond with?".format(embedding_mask_str)
+                dp['answer'] = "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_h'])
                 dp_list.append(dp)
                 
                 ### number_of_radical_e task
                 
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. How many radical electrons does this atom have?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_radical_e'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. How many radical electrons does this atom have?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_radical_e'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. How many radical electrons does this atom have?".format(embedding_mask_str)
+                dp['answer'] = "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['number_of_radical_e'])
                 dp_list.append(dp)
                 
                 ### hybridization task
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. What is the hybridization type of this atom?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['hybridization'])
-                    }
-                ]
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. What is the hybridization type of this atom?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['hybridization'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. What is the hybridization type of this atom?".format(embedding_mask_str)
+                dp['answer'] = "The atom bonds with {} hydrogen atoms.".format(text_to_embedding[i]['hybridization'])
+                dp_list.append(dp)
                 ### aromatic_ring task
                 if text_to_embedding[i]['aromatic_ring'] == 1:
                     aromatic_answer = 'Indeed, this atom is incorporated into an aromatic system.'
                 else:
                     aromatic_answer = "Nope, this atom is not involved in the aromatic ring system."
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. Is this atom part of an aromatic ring?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": aromatic_answer
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. Is this atom part of an aromatic ring?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": aromatic_answer
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of an atom in a molecular. Is this atom part of an aromatic ring?".format(embedding_mask_str)
+                dp['answer'] = aromatic_answer
                 dp_list.append(dp)
                 
                 ### ring task
@@ -286,60 +382,72 @@ def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
                     ring_answer = "Yes, it plays a structural role in maintaining the ring's integrity."
                 else:
                     ring_answer = "No, this atom is positioned outside of any ring structure."
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of an atom in a molecular. Does this atom belong to a ring structure?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": ring_answer
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of an atom in a molecular. Does this atom belong to a ring structure?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": ring_answer
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] =  "This {} is embedding of an atom in a molecular. Does this atom belong to a ring structure?".format(embedding_mask_str)
+                dp['answer'] = ring_answer
                 dp_list.append(dp)
                 
                 ### degree task
                 if np.random.rand() < 0.3:
-                    json_for_template = [
-                        {
-                            "role": "user",
-                            "content": "This {} is embedding of an atom in a molecular. What is the valency of this atom?".format(embedding_mask_str)
-                        },
-                        {
-                            "role": "assistant",
-                            "content": "It is {}.".format(text_to_embedding[i]['degree'])
-                        }
-                    ]
-                    dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                    # json_for_template = [
+                    #     {
+                    #         "role": "user",
+                    #         "content": "This {} is embedding of an atom in a molecular. What is the valency of this atom?".format(embedding_mask_str)
+                    #     },
+                    #     {
+                    #         "role": "assistant",
+                    #         "content": "It is {}.".format(text_to_embedding[i]['degree'])
+                    #     }
+                    # ]
+                    dp = {}
+                    dp['unaligned_input_embeds'] = [embedding]
+                    dp['question'] =  "This {} is embedding of an atom in a molecular. What is the valency of this atom?".format(embedding_mask_str)
+                    dp['answer'] = "It is {}.".format(text_to_embedding[i]['degree'])
                     dp_list.append(dp)
                 
             elif len(curr_key) == 3:
                 ### bond type task
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of a chemical bond in a molecular. What is type of this bond?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The type of this bond is {}.".format(text_to_embedding[i]['bond_type'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of a chemical bond in a molecular. What is type of this bond?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The type of this bond is {}.".format(text_to_embedding[i]['bond_type'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of a chemical bond in a molecular. What is type of this bond?".format(embedding_mask_str)
+                dp['answer'] = "The type of this bond is {}.".format(text_to_embedding[i]['bond_type'])
                 dp_list.append(dp)
                 ### bond_stereochemistry task
-                json_for_template = [
-                    {
-                        "role": "user",
-                        "content": "This {} is embedding of a chemical bond in a molecular. What type of bond stereochemistry does this bond have?".format(embedding_mask_str)
-                    },
-                    {
-                        "role": "assistant",
-                        "content": "The bond exhibits {} stereochemistry.".format(text_to_embedding[i]['bond_stereochemistry'])
-                    }
-                ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                # json_for_template = [
+                #     {
+                #         "role": "user",
+                #         "content": "This {} is embedding of a chemical bond in a molecular. What type of bond stereochemistry does this bond have?".format(embedding_mask_str)
+                #     },
+                #     {
+                #         "role": "assistant",
+                #         "content": "The bond exhibits {} stereochemistry.".format(text_to_embedding[i]['bond_stereochemistry'])
+                #     }
+                # ]
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of a chemical bond in a molecular. What type of bond stereochemistry does this bond have?".format(embedding_mask_str)
+                dp['answer'] = "The bond exhibits {} stereochemistry.".format(text_to_embedding[i]['bond_stereochemistry'])
                 dp_list.append(dp)
                 ###  conjugated task
                 if text_to_embedding[i]['conjugated'] == 1:
@@ -356,19 +464,22 @@ def prepare_molhiv_pretrain_dataset(tokenizer, tokenizer_name, dataset_name):
                         "content": conjugated_answer
                     }
                 ]
-                dp = pretrain_prepare_dp(json_for_template,embedding, tokenizer, embedding_mask_id,start_header_id,assistant_id, end_header_id, eot_id)
+                dp = {}
+                dp['unaligned_input_embeds'] = [embedding]
+                dp['question'] = "This {} is embedding of a chemical bond in a molecular. What is the conjugation status of this bond?".format(embedding_mask_str)
+                dp['answer'] = conjugated_answer
                 dp_list.append(dp)
         dataset = Dataset.from_list(dp_list)
-    if not os.path.exists(os.path.join('datasets_local',tokenizer_name)):
-        os.makedirs(os.path.join('datasets_local',tokenizer_name))
-    dataset.save_to_disk(os.path.join('datasets_local',tokenizer_name,dataset_name))
+    # if not os.path.exists(os.path.join('datasets_local',tokenizer_name)):
+    #     os.makedirs(os.path.join('datasets_local',tokenizer_name))
+    dataset.save_to_disk(os.path.join('datasets_local/connector_pretrain',dataset_name))
     
 def prepare_embedding_prediction_dataset(tokenizer, tokenizer_name, dataset_name):
     raw_data = load_arxiv_raw_data(embeddings=True, graph=True, text_label=True, split_ids=True)
     unaligned_embeddings, graph, text_label, split_ids = raw_data['embeddings'], raw_data['graph'], raw_data['text_label'], raw_data['split_ids']
     dp_list = []
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
-    label2category = pd.read_csv(os.path.join('your_local_root_path/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
+    label2category = pd.read_csv(os.path.join('/data/sharefile/wei/dataset/','ogbn_arxiv/mapping/labelidx2arxivcategeory.csv.gz'), compression='gzip')
     categories_string = "Please classify the paper into one of the following categories:"
     for key in arxiv_category_mapping_dict.keys():
         categories_string += arxiv_category_mapping_dict[key] + '; '
@@ -551,9 +662,9 @@ def prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, 
             
         
 def prepare_molhiv_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, edge_sort_type='random'):
-    map_index = torch.load('your_local_root_path/ogbg_molhiv/map_index_vector_to_text.bin',map_location='cpu')
-    text_to_embeddings = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
-    graph_datasets = DglGraphPropPredDataset(name='ogbg-molhiv',root='your_local_root_path')
+    map_index = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/map_index_vector_to_text.bin',map_location='cpu')
+    text_to_embeddings = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin', map_location='cpu')
+    graph_datasets = DglGraphPropPredDataset(name='ogbg-molhiv',root='/data/sharefile/wei/dataset')
     start_header_id, assistant_id, end_header_id,eot_id, embedding_mask_id = tokenizer.convert_tokens_to_ids(['<|start_header_id|>','assistant','<|end_header_id|>','<|eot_id|>',embedding_mask_str])
 
     split_ids = graph_datasets.get_idx_split()
@@ -742,17 +853,206 @@ def prepare_link_prediction_dataset(dataset_name):
         graph_description,subgraph_embeddings, check_node_id, truncated =  prepare_graph_by_edge(graph,u_center, v_center)
         dp  = prepare_dp(False)
         dp_lists.append(dp)
-    dgl.save_graphs('your_local_root_path/for_NC_check/{}'.format(dataset_name),[graph])
-    torch.save(neg_list,'your_local_root_path/for_NC_check/{}_neg'.format(dataset_name))
-    torch.save(positive_list,'your_local_root_path/for_NC_check/{}_pos'.format(dataset_name))
+    dgl.save_graphs('/data/sharefile/wei/dataset/for_NC_check/{}'.format(dataset_name),[graph])
+    torch.save(neg_list,'/data/sharefile/wei/dataset/for_NC_check/{}_neg'.format(dataset_name))
+    torch.save(positive_list,'/data/sharefile/wei/dataset/for_NC_check/{}_pos'.format(dataset_name))
     dataset = Dataset.from_list(dp_lists)
     dataset.save_to_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_link_prediction'.format(dataset_name))
         
-        
-        
+
+def new_prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, max_nodes=10, edge_sort_type='random',rank=0,machine_num=1):
+    if 'arxiv' in dataset_name:
+        raw_data = load_arxiv_raw_data(embeddings=True, graph=True, text_label=True, split_ids=True)
+    elif 'cora' in dataset_name:
+        raw_data = load_cora_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
+    elif 'pubmed' in dataset_name:
+        raw_data = load_pubmed_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
+    elif 'products' in dataset_name:
+        raw_data = load_products_raw_data(embeddings=True, graph=True, text_label=True, split_ids=True)
+    else:
+        raise NotImplementedError
+    unaligned_embeddings, graph, text_label, split_ids = raw_data['embeddings'], raw_data['graph'], raw_data['text_label'], raw_data['split_ids']
+    dp_list = []
+    seg_num = graph.num_nodes() // machine_num
+    
+    print('rank: {} machine_num: {}'.format(rank, machine_num))
+    with tqdm(range(seg_num*rank, min(seg_num * (rank+1),graph.num_nodes()))) as pbar:
+        for i in pbar:
+            subgraph_embeddings = []
+            subgraph_node_list = graph.successors(i).tolist()
+            original_node_idx = []
+            if len(subgraph_node_list) > max_nodes:
+                subgraph_node_list = subgraph_node_list[:max_nodes]
+                truncated = True
+            subgraph_node_list = [i] + subgraph_node_list
+            ego_subgraph = dgl.node_subgraph(graph, subgraph_node_list)
+            assert ego_subgraph.ndata[dgl.NID][0] == i,' subgraph node index 0 does not equal to the target node index'
+            graph_description_str = begin_of_nodes_str
+            for j, node_id in enumerate(ego_subgraph.ndata[dgl.NID].tolist()):
+                graph_description_str += embedding_mask_str + str(j)
+                subgraph_embeddings.append(unaligned_embeddings[node_id])
+                original_node_idx.append(node_id)
+            graph_description_str += end_of_nodes_str
+            graph_description_str += begin_of_edges_str
+
+            if edge_sort_type == 'random':
+                ego_subgraph = remove_reverse_edge(ego_subgraph)
+                u,v = ego_subgraph.edges()[0].tolist(), ego_subgraph.edges()[1].tolist()
+                random_list = torch.randperm(len(u)).tolist()
+                for j in random_list:
+                    graph_description_str += one_edge_str + str(u[j]) +', ' + str(v[j])
+            else:
+                raise NotImplementedError('edge_sort_type {} is not implemented'.format(edge_sort_type))
+            graph_description_str += end_of_edges_str
+            
+            classification_question = "Please classify the node 0 into one of the following categories:"
+            if 'arxiv' in dataset_name :
+                for key in arxiv_category_mapping_dict.keys():
+                    classification_question += arxiv_category_mapping_dict[key] + '; '
+            elif 'cora' in dataset_name :
+                for key in cora_text_label_list:
+                    classification_question += key + '; '
+            elif 'pubmed' in dataset_name:
+                for key in pubmed_text_label_list:
+                    classification_question += key + '; '
+            elif 'products' in dataset_name:
+                for key in products_category_mapping_dict.keys():
+                    classification_question += products_category_mapping_dict[key] + "; "
+            classification_question = classification_question[:-2] + '.'
+            # import ipdb; ipdb.set_trace()
+            
+            split_set = 'train' if i in split_ids['train'] else 'valid' if i in split_ids['valid'] else 'test'
+            dp = {}
+            dp['unaligned_input_embeds'] = subgraph_embeddings
+            dp['question'] = "This is a graph: "+ graph_description_str + ". " + classification_question
+            dp['answer'] = text_label[i]
+            dp['original_node_idx'] = original_node_idx
+            dp['split_set'] = split_set
+            
+            dp_list.append(dp)
+    print("length of dp_list: ",len(dp_list))
+    dataset = Dataset.from_list(dp_list)
+    # dataset = Dataset.from_list(dp_list)
+    if machine_num != 1:
+        dataset.save_to_disk(os.path.join('datasets_local/with_node_index',dataset_name + '_{}'.format(rank)))
+    else:
+        dataset.save_to_disk(os.path.join('datasets_local/with_node_index',dataset_name))
+    # dataset.save_to_disk(os.path.join('datasets_local/with_node_index',dataset_name))
+
+
+def k_hop_new_prepare_graph_embedding_QA_dataset(tokenizer, tokenizer_name, dataset_name, max_nodes=10, edge_sort_type='random',max_hop=1,task_type='classification'):
+    if 'arxiv' in dataset_name:
+        raw_data = load_arxiv_raw_data(embeddings=True, graph=True, text_label=True, split_ids=True, raw_text=True)
+    elif 'cora' in dataset_name:
+        raw_data = load_cora_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
+    elif 'pubmed' in dataset_name:
+        raw_data = load_pubmed_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
+    else:
+        raise NotImplementedError
+    unaligned_embeddings, graph, text_label, split_ids, raw_texts = raw_data['embeddings'], raw_data['graph'], raw_data['text_label'], raw_data['split_ids'], raw_data['raw_text']
+    dp_list = []
+    graph = graph
+    
+    with tqdm(range(graph.num_nodes())) as pbar:
+        for i in pbar:
+            subgraph_embeddings = []
+            first_hop_enough = graph.predecessors(i).shape[0] >= max_nodes
+            origin_1hop_size = graph.predecessors(i).shape[0]
+            chosed_node_set = set()
+            chosed_node_set.add(i)
+            if first_hop_enough:
+                frist_hop_length = graph.predecessors(i).shape[0]
+                subgraph_node_list = [i] + graph.predecessors(i)[torch.randperm(frist_hop_length)].tolist()
+            else:
+                for node_idx in graph.predecessors(i):
+                    chosed_node_set.add(node_idx.item())
+                k_hop_subgraph, ego_node_index = dgl.khop_in_subgraph(graph, i, k=max_hop,relabel_nodes=True)
+                k_hop_subgraph = dgl.add_reverse_edges(k_hop_subgraph)
+                k_hop_subgraph = dgl.to_simple(k_hop_subgraph.cpu())
+                ego_node_index = ego_node_index[0].item()
+                if k_hop_subgraph.number_of_nodes() > max_nodes + 1:
+                    # chosed_node_set = set()
+                    # chosed_node_set.add(ego_node_index)
+                    while len(chosed_node_set) < max_nodes + 1:
+                        traces, _ = dgl.sampling.random_walk(k_hop_subgraph,ego_node_index,length=max_hop+2)
+                        nodes_in_walk = torch.unique(traces.view(-1)).tolist()
+                        for node_id in nodes_in_walk:
+                            chosed_node_set.add(k_hop_subgraph.ndata[dgl.NID][node_id].item())
+                    chosed_node_set.remove(i)
+                    chosed_node_set = list(chosed_node_set)
+                    subgraph_node_list = [i] +  chosed_node_set #  k_hop_subgraph.ndata[dgl.NID][chosed_node_set].tolist()
+                else:
+                    subgraph_node_list = k_hop_subgraph.ndata[dgl.NID].tolist()
+                    subgraph_node_list.remove(i)
+                    subgraph_node_list = [i] + subgraph_node_list
+            
+            original_node_idx = []
+            if len(subgraph_node_list) > max_nodes:
+                subgraph_node_list = subgraph_node_list[:max_nodes]
+                truncated = True
+            ego_subgraph = dgl.node_subgraph(graph, subgraph_node_list)
+            assert ego_subgraph.ndata[dgl.NID][0] == i,' subgraph node index 0 does not equal to the target node index'
+            graph_description_str = begin_of_nodes_str
+            for j, node_id in enumerate(ego_subgraph.ndata[dgl.NID].tolist()):
+                graph_description_str += embedding_mask_str + str(j)
+                subgraph_embeddings.append(unaligned_embeddings[node_id])
+                original_node_idx.append(node_id)
+            graph_description_str += end_of_nodes_str
+            graph_description_str += begin_of_edges_str
+
+            if edge_sort_type == 'random':
+                ego_subgraph = dgl.add_reverse_edges(ego_subgraph)
+                ego_subgraph = dgl.to_simple(ego_subgraph)
+                ego_subgraph = remove_reverse_edge(ego_subgraph)
+                u,v = ego_subgraph.edges()[0].tolist(), ego_subgraph.edges()[1].tolist()
+                random_list = torch.randperm(len(u)).tolist()
+                for j in random_list:
+                    graph_description_str += one_edge_str + str(u[j]) +', ' + str(v[j])
+            else:
+                raise NotImplementedError('edge_sort_type {} is not implemented'.format(edge_sort_type))
+            graph_description_str += end_of_edges_str
+            if task_type == 'classification':
+                classification_question = "Please classify the node 0 into one of the following categories:"
+                if 'arxiv' in dataset_name :
+                    for key in arxiv_category_mapping_dict.keys():
+                        classification_question += arxiv_category_mapping_dict[key] + '; '
+                elif 'cora' in dataset_name :
+                    for key in cora_text_label_list:
+                        classification_question += key + '; '
+                elif 'pubmed' in dataset_name:
+                    for key in pubmed_text_label_list:
+                        classification_question += key + '; '
+                classification_question = classification_question[:-2] + '.'
+                answer = text_label[i]
+            elif task_type == 'title recovery':
+                classification_question = "Given the node features and the overall graph structure, predict or recover the most likely title of node 0."
+                answer = re.search(r"^Title:\s*(.+)", raw_texts[i], re.MULTILINE).group(1)
+            # import ipdb; ipdb.set_trace()
+            
+            split_set = 'train' if i in split_ids['train'] else 'valid' if i in split_ids['valid'] else 'test'
+            dp = {}
+            dp['unaligned_input_embeds'] = subgraph_embeddings
+            dp['question'] = "This is a graph: "+ graph_description_str + ". " + classification_question
+            dp['answer'] = answer #text_label[i]
+            dp['original_node_idx'] = original_node_idx
+            dp['split_set'] = split_set
+            dp['truncated'] = first_hop_enough
+            dp['origin_1hop_size'] = origin_1hop_size
+            dp_list.append(dp)
+    print("length of dp_list: ",len(dp_list))
+    dataset = Dataset.from_list(dp_list)
+    dataset.save_to_disk(os.path.join('datasets_local/with_node_index',"{}_title_recovery".format(dataset_name,max_hop,max_nodes)))
         
 if __name__ == '__main__':
-    prepare_link_prediction_dataset('cora')
+    # prepare_pretrain_dataset('products_pretrain','product')
+    # max_nodes, max_hop = 11,1
+    # ds_name = 'arxiv'
+    # print('Max_nodes:{} max hop: {} ds_name: {}'.format(max_nodes, max_hop, ds_name))
+    prepare_pretrain_dataset('MSRC21',"image")
+    # for i in range(15,20):
+    #     new_prepare_graph_embedding_QA_dataset(None, None, 'products',rank=i, machine_num=20)
+    # k_hop_new_prepare_graph_embedding_QA_dataset(None, None,ds_name,max_nodes=max_nodes,max_hop=max_hop, task_type='title recovery')
+    # prepare_link_prediction_dataset('cora')
     # tokenizer_name = 'Llama-3.2-3B-Instruct'
     # tokenizer = AutoTokenizer.from_pretrained('meta-llama/{}'.format(tokenizer_name))
     # tokenizer.add_tokens([embedding_mask_str, begin_of_nodes_str, end_of_nodes_str, begin_of_edges_str, end_of_edges_str, one_edge_str])

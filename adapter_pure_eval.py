@@ -20,10 +20,11 @@ import json,re,time
 # from tensorboardX import SummaryWriter
 
 import multiprocess as mp
+from models.graphAdapter import GraphAdapter4CausalLM
 
 global_ds_name = 'arxiv'
-max_new_tokens = 20
-batch_size = 16
+max_new_tokens = 800
+batch_size = 64
 use_half = True
 change_order = False
 zero_modify = False
@@ -62,7 +63,7 @@ class LeftPaddingPredictionCollator(DataCollatorForLanguageModeling):
         batch['attention_mask'] = torch.ones_like(batch['input_ids'])
         batch['attention_mask'][batch['input_ids'] == self.tokenizer.pad_token_id] = 0
         if 'unaligned_input_embeds' in examples[0].keys():
-            batch['unaligned_input_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=batch['input_ids'].device) for example in examples]
+            batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=batch['input_ids'].device) for example in examples]
             embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
             batch['embedding_positions'] = []
             for i in range(len(examples)):
@@ -97,23 +98,13 @@ class ChangeOrderLeftPaddingPredictionCollator(LeftPaddingPredictionCollator):
             result = before_edge_str + begin_of_edges_str + ''.join(t + d for t, d in zip(remapped_digits, delimiters)) + (remapped_digits[-1] if len(remapped_digits) > len(delimiters) else '')
             
             example['input_ids'] = self.tokenizer.encode(result,add_special_tokens=False)
-            example['unaligned_input_embeds'] = new_unaligned_input_embeds
+            example['unaligned_inputs_embeds'] = new_unaligned_input_embeds
             examples[i] = example
         return super().torch_call(examples)
         
 if __name__ == "__main__":
     set_seed(42)
     device = torch.device('cuda:0')
-    # my_writer = SummaryWriter('zero_shot_cora_3B')
-    # '''
-    #     This is for pure embedding prediction task
-    # '''
-    # ds = load_from_disk('datasets_local/Llama-3.2-3B-Instruct/arxiv_pureEmbeds_prediction_test_set_only')
-    # tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-3.2-3B-Instruct')
-    # base_model = LLama4Graph.from_pretrained("meta-llama/Llama-3.2-3B-Instruct").to(device)
-    # base_model.lm_head.load_state_dict(base_model.model.embed_tokens.state_dict())
-    # base_model.node_embedding_connect.load_state_dict(torch.load('ckpts/llama3_2_3B_Instruct/arxiv_pretrain_lr01/checkpoint-451000/node_embedding_connect.pt',map_location='cpu').state_dict())
-    # peft_model = PeftModel.from_pretrained(base_model,model_id='ckpts/llama3_2_3B_Instruct/arxiv_pureEmbeds_LoRA/checkpoint-85000/lora_adapter.pt')
     
     '''
         This is for Graph Embedding QA prediction Task
@@ -123,6 +114,8 @@ if __name__ == "__main__":
     ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
     # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_graph_embedding_QA_pure_nodes_with_element_type_count_cot'.format(global_ds_name))
     # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/cora_link_prediction')
+    connector_path_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/node_embedding_connect.pt"
+    lora_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/lora_adapter"
     correct_node_idxs = []
     if global_ds_name == 'arxiv' or global_ds_name == 'mutag' or global_ds_name == 'molhiv' or 'link' in global_ds_name or 'cora' in global_ds_name:
         test_set_ids = np.where((np.array(ds['split_set']) == 'test') * (np.array(ds['task_type'])== 'classification'))[0]
@@ -133,14 +126,15 @@ if __name__ == "__main__":
     print("=============length of :",len(test_set_ids))
     print("==================batch size:", batch_size)
     
-    # base_model_path = 'base_models/llama3_2_3B_Instruct_pretrain_lr03_ckpt_197000'
-    base_model_path = 'base_models/llama3_2_1B_Instruct_pretrain_lr03_ckpt_149000'
+    base_model_path = "Qwen/Qwen2.5-1.5B-Instruct"
+    
     print(base_model_path)
     print(load_ds_name)
     print('change order:{} zero modify:{}'.format(change_order, zero_modify))
     tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-    # tokenizer.add_tokens([embedding_mask_str, begin_of_nodes_str, end_of_nodes_str, begin_of_edges_str, end_of_edges_str, one_edge_str])
-    tokenizer.pad_token = '<|finetune_right_pad_id|>'
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_tokens([embedding_mask_str])#,begin_of_nodes_str,end_of_nodes_str,begin_of_edges_str,end_of_edges_str,one_edge_str])
+    embedding_mask_id = tokenizer.encode(embedding_mask_str, add_special_tokens=False)[0]
     def chat_map(dp):
         QA_json = {}
         question_str = dp.pop('question')
@@ -154,6 +148,7 @@ if __name__ == "__main__":
         answer_str = answer_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
         answer_str = answer_str.replace('Diabetes Mellitus Type 1', 'Diabetes Type 1')
         answer_str = answer_str.replace('Diabetes Mellitus Type 2', 'Diabetes Type 2')
+        question_str = question_str.split('Please classify the node 0 into')[0] + " Based on its own and other nodes' node features and the graph structure, classify node 0 into one of the following list: Artificial Intelligence; Hardware Architecture; Computational Complexity; Computational Engineering, Finance, and Science; Computational Geometry; Computation and Language; Cryptography and Security; Computer Vision and Pattern Recognition; Computers and Society; Databases; Distributed, Parallel, and Cluster Computing; Digital Libraries; Discrete Mathematics; Data Structures and Algorithms; Emerging Technologies; Formal Languages and Automata Theory; General Literature; Graphics; Computer Science and Game Theory; Human-Computer Interaction; Information Retrieval; Information Theory; Machine Learning; Logic in Computer Science; Multiagent Systems; Multimedia; Mathematical Software; Numerical Analysis; Neural and Evolutionary Computing; Networking and Internet Architecture; Other Computer Science; Operating Systems; Performance; Programming Languages; Robotics; Symbolic Computation; Sound; Software Engineering; Social and Information Networks; Systems and Control."
         QA_json['full'] = [
             {
                 'role': 'user',
@@ -170,72 +165,51 @@ if __name__ == "__main__":
                 'content': question_str
             }
         ]
-        full_chat = tokenizer.apply_chat_template(QA_json['full'],return_tensors='pt')[0]
-        question_only = tokenizer.apply_chat_template(QA_json['question_only'],return_tensors='pt',add_generation_prompt=True)[0]
+        full_chat = tokenizer.apply_chat_template(QA_json['full'],return_tensors='pt',enable_thinking=False)[0]
+        question_only = tokenizer.apply_chat_template(QA_json['question_only'],return_tensors='pt',add_generation_prompt=True, enable_thinking=False)[0]
         dp['input_ids'] = full_chat.tolist() #tokenizer.encode(full_chat,add_special_tokens=False,return_tensors='pt')
         labels = full_chat.clone()
         prompt_length = question_only.shape[0]
         labels[:prompt_length] = -100
         dp['labels'] = labels.tolist()
         dp['length'] = len(dp['input_ids'])
-        # dp.pop('type')
         return dp
     ds = ds.map(chat_map,num_proc=16)
-    # test_set_ids = test_set_ids[40000:-1]
     ds = ds.select(test_set_ids)
     
-    # import ipdb;ipdb.set_trace()
     
     use_value_head = False
-    # parent_checkpoint_path = 'ckpts/llama3_2_3B_Instruct/value_head_finetune_high_lr_lora_fixed2025-05-10 17:55:20.592514'
-    # parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_graph_understanding_single_ds2025-05-14 14:35:28.475663'
-    # parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_no_graph_understanding2025-05-14 21:00:16.209591'
-    # parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/r_16_ablation_graph_understanding_single_ds2025-05-15 00:59:14.267954'
-    parent_checkpoint_path = 'ckpts/llama3_2_1B_Instruct/order_changed_r_16_with_title_recovery2025-08-22 22:29:15.830648'
-    
-    print('check point path:   ', parent_checkpoint_path)
-    ckpts_dirs = []
-    for i in range(450000,600000,5000):
-        ckpts_dirs.append(str(i))
-    # ckpts_dirs = ['105000']#,'6001','7001','9601']#,'16000']#,'150000','160000','167000']#,'67000','80000']#,'24000','25000']
+
+    ckpts_dirs = ['40000']
+    # for i in range(450000,600000,5000):
+    #     ckpts_dirs.append(str(i))
+    # # ckpts_dirs = ['105000']#,'6001','7001','9601']#,'16000']#,'150000','160000','167000']#,'67000','80000']#,'24000','25000']
     count_dict = {}
-    # for ckpt_index in range(10000, 100000,1000):
+    parent_checkpoint_path = 'ckpts/Qwen2_5_1_5B/no_add_tokens_rl_warmup_no_random2025-09-29 23:46:59.366590'
     for curr_ckpt in ckpts_dirs:
         # curr_ckpt = str(ckpt_index)
-        peft_model = None
-        base_model = None
         torch.cuda.empty_cache()
-        # base_model = LLama4Graph.from_pretrained(base_model_path)
-        base_model = LLama4Graph.from_pretrained("base_models/llama3_2_1B_Instruct_pretrain_lr03_ckpt_149000").to(device)
-        base_model.embedding_mask_id = tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
+        model = GraphAdapter4CausalLM.from_pretrained(base_model_path, embedding_mask_id,connect_dir=connector_path_dir,LoRA_dir=lora_dir)
+        # model.node_embedding_connect.load_state_dict(torch.load(connector_path_dir,weights_only=False).state_dict())
         if  curr_ckpt != 'zero_shot':
             if not use_value_head:
-                base_model.load_adapter('{}/checkpoint-{}/lora_adapter'.format(parent_checkpoint_path,curr_ckpt))
-                peft_model = base_model
+                peft_model = PeftModel.from_pretrained(model,"{}/checkpoint-{}/lora_adapter".format(parent_checkpoint_path,curr_ckpt))
             else:
                 peft_model = LLama4GraphWithValueHead.from_pretrained(base_model)
                 peft_model.load_state_dict(torch.load('{}/checkpoint-{}/pytorch_model.bin'.format(parent_checkpoint_path,curr_ckpt),map_location='cpu'),strict=False)
                 peft_model.pretrained_model.load_adapter('{}/checkpoint-{}'.format(parent_checkpoint_path,curr_ckpt))
             
-            peft_model.generation_config = base_model.generation_config
+            # peft_model.generation_config = base_model.generation_config
         else:
-            lora_config = LoraConfig(
-            r=8,
-            lora_alpha=16,
-            lora_dropout=0.1,
-            bias="none",
-            task_type=TaskType.CAUSAL_LM,
-        )
-            peft_model = get_peft_model(base_model, lora_config)
+            peft_model = model
         if use_half:
             peft_model = peft_model.half()
         peft_model = peft_model.to(device)
-        peft_model.generation_config.do_sample = False
-        peft_model.generation_config.top_p = 1
-        peft_model.generation_config.temperature = 1
+        peft_model.base_model.generation_config.do_sample = False
+        peft_model.base_model.generation_config.top_p = 1
+        peft_model.base_model.generation_config.temperature = 1
+        peft_model.base_model.generation_config.top_k = None
         
-        # tokenizer = AutoTokenizer.from_pretrained('ckpts/llama3_2_3B_Instruct/value_head_graph_test/checkpoint-{}'.format(curr_ckpt))
-        # tokenizer.pad_token = '<|finetune_right_pad_id|>'
         if change_order:
             collator = ChangeOrderLeftPaddingPredictionCollator(tokenizer, mlm=False)
             collator.change_zero = zero_modify
@@ -246,67 +220,30 @@ if __name__ == "__main__":
         res_list = [] 
         raw_input_list =[]
         res_values = []
-        peft_model.generation_config.pad_token_id = tokenizer.eos_token_id
+        peft_model.base_model.generation_config.pad_token_id = tokenizer.eos_token_id
         print(tokenizer.eos_token_id)
         test_dataloader = DataLoader(
             ds,
             batch_size = batch_size,
             collate_fn=collator,
             num_workers=4,
-            shuffle=False
+            shuffle=False,
         )
         correct_count = {'truncated':0,'correct_truncated': 0}
         reasoning_save_list = []
         with torch.no_grad():
             for index, batch_data in enumerate(tqdm(test_dataloader, desc='Testing Process')):
+                for i in range(len(batch_data['unaligned_inputs_embeds'])):
+                    batch_data['unaligned_inputs_embeds'][i] = batch_data['unaligned_inputs_embeds'][i].to(peft_model.node_embedding_connect[0].weight)
+                batch_data['input_ids'] = batch_data['input_ids'].to(device)
+                batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
+                batch_res = peft_model.generate(max_new_tokens=max_new_tokens,generation_config = peft_model.base_model.generation_config, **batch_data)
                 
-                if not use_value_head:
-                    batch_input_embeds = peft_model.get_input_embeddings()(batch_data['input_ids'].to(device))
-                else:
-                    batch_input_embeds = peft_model.pretrained_model.get_input_embeddings()(batch_data['input_ids'].to(device))
-                
-                if 'unaligned_input_embeds' in batch_data.keys():
-                    for i in range(len(batch_data['unaligned_input_embeds'])):
-                        if use_half:
-                            unaligned_input_embeds = batch_data['unaligned_input_embeds'][i].to(device).half()
-                        else:
-                            unaligned_input_embeds = batch_data['unaligned_input_embeds'][i].to(device)
-                        if not use_value_head:
-                            aligned_embeds = peft_model.node_embedding_connect(unaligned_input_embeds)
-                            
-                            # if use_half:
-                            #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_input_embeds'][i].to(device).half())
-                            # else:
-                            #     aligned_embeds = peft_model.node_embedding_connect(batch_data['unaligned_input_embeds'][i].to(device))#.half())
-                        else:
-                            aligned_embeds = peft_model.pretrained_model.node_embedding_connect(unaligned_input_embeds)
-                            # aligned_embeds = peft_model.pretrained_model.node_embedding_connect(batch_data['unaligned_input_embeds'][i].to(device))
-                        
-                        new_position = batch_data['embedding_positions'][i]
-                        batch_input_embeds[i][new_position] = aligned_embeds
-                if use_value_head:
-                    batch_res = peft_model.generate(
-                        inputs_embeds = batch_input_embeds,
-                        attention_mask = batch_data['attention_mask'].to(device),
-                        do_sample = False,
-                        max_new_tokens = max_new_tokens,
-                        require_value = True,
-                    )
-                else:
-                    batch_res = peft_model.generate(
-                        inputs_embeds = batch_input_embeds,
-                        attention_mask = batch_data['attention_mask'].to(device),
-                        do_sample = False,
-                        max_new_tokens = max_new_tokens,
-                        generation_config = peft_model.generation_config
-                    )
-                # import ipdb; ipdb.set_trace()
                 if not use_value_head:
                     res_list.append(batch_res)
                 else:
                     res_list.append(batch_res[0])
                     res_values.append(batch_res[1])  
-                # print(tokenizer.decode(batch_res[0]))
         label_list = []
         preds = []
         values = []
@@ -319,6 +256,8 @@ if __name__ == "__main__":
                     values.append(0)
                 
         all_correct = 0
+        all_pure_predict_format_right = 0
+        all_pure_predict_correct = 0
         idxs = []
         all_y_pred = []
         all_y_true = []
@@ -335,6 +274,7 @@ if __name__ == "__main__":
         eot_id = tokenizer.encode('<|eot_id|>',add_special_tokens=False)[0]
         
         def get_check_data(start_index, end_index):
+            T_F_correct = 0
             return_dict = {}
             return_dict['truncated'] = 0
             return_dict['correct_truncated'] = 0
@@ -342,6 +282,8 @@ if __name__ == "__main__":
             return_dict['all_degree_correct'] = {}
             return_dict['origin_1_hop_count'] = {}
             return_dict['origin_1_hop_correct'] = {}
+            pure_predict_correct = 0
+            pure_predict_format_right = 0
             correct = 0
             len_count = []
             y_true =  []
@@ -361,7 +303,11 @@ if __name__ == "__main__":
                 #     return_dict['origin_1_hop_correct'][origin_1_hop_size] = 0
                 #     return_dict['origin_1_hop_count'][origin_1_hop_size] = 0
                 # return_dict['origin_1_hop_count'][origin_1_hop_size] += 1
-                
+                current_predict = tokenizer.decode(preds[idx]).split('assistant\n')[-1]
+                if len(current_predict.split('</think>')) > 1:
+                    pure_predict = current_predict.split('</think>')[-1]
+                else:
+                    pure_predict = None
                 if ds[idx]['truncated']:
                     return_dict['truncated'] += 1
                 if "Yes" in tokenizer.decode(labels[labels != -100][:-1]):
@@ -370,30 +316,36 @@ if __name__ == "__main__":
                     y_true.append(1)
                 else:
                     y_true.append(0)
-                if "Yes" in tokenizer.decode(preds[idx]):
+                if "Yes" in current_predict:
                     y_pred.append(1)
-                elif "Nope" in tokenizer.decode(preds[idx]) or "No" in tokenizer.decode(preds[idx]):
+                elif "Nope" in current_predict or "No" in current_predict:
                     y_pred.append(0)
                 else:
                     y_pred.append(-1)
                 if y_pred[-1] == y_true[-1]:
                     T_F_correct += 1
-                if tokenizer.decode(labels[labels != -100][:-1]).lower() in tokenizer.decode(preds[idx]).lower():
+                if tokenizer.decode(labels[labels != -100][:-1]).lower() in current_predict.lower():
                     correct_dp = {}
                     correct_dp['label'] = tokenizer.decode(labels[labels != -100]).lower()
-                    correct_dp['preds'] = tokenizer.decode(preds[idx][preds[idx] != eot_id]).lower()
+                    correct_dp['preds'] = current_predict.lower()
                     correct += 1
                     return_dict['all_degree_correct'][current_degree] += 1
                     # return_dict['origin_1_hop_correct'][origin_1_hop_size] += 1
-                    if is_all_label_contained(tokenizer.decode(preds[idx])):
+                    if is_all_label_contained(current_predict):
                         correct -= 1
                     if ds[idx]['truncated']:
                         return_dict['correct_truncated'] += 1
+                if pure_predict is not None:
+                    pure_predict_format_right += 1
+                    if tokenizer.decode(labels[labels != -100][:-1]).lower() in pure_predict.lower() and not is_all_label_contained(pure_predict):
+                        pure_predict_correct += 1
                     
             return_dict['len_count'] = len_count
             return_dict['correct'] = correct
             return_dict['y_pred'] = y_pred
             return_dict['y_true'] = y_true
+            return_dict['pure_predict_format_right'] = pure_predict_format_right
+            return_dict['pure_predict_correct'] = pure_predict_correct
             
             return return_dict
         
@@ -407,6 +359,8 @@ if __name__ == "__main__":
             for i in range(process_number):
                 current_res = my_pool[i].get()
                 all_correct += current_res['correct']
+                all_pure_predict_format_right += current_res['pure_predict_format_right']
+                all_pure_predict_correct += current_res['pure_predict_correct']
                 all_y_pred.extend(current_res['y_pred'])
                 all_y_true.extend(current_res['y_true'])
                 all_len_count.extend(current_res['len_count'])
@@ -433,47 +387,6 @@ if __name__ == "__main__":
         eot = time.time()
         print('eval_time:{}'.format(eot-bot))
         
-        # with tqdm(range(len(preds))) as pbar:
-        
-        #     for i in pbar:
-        #         labels = torch.tensor(ds[i]['labels'])
-        #         len_count.append(len(ds[i]['input_ids']))
-        #         if ds[i]['truncated']:
-        #             correct_count['truncated'] += 1
-        #         if "Yes" in tokenizer.decode(labels[labels != -100][:-1]):
-        #             # print(tokenizer.decode(preds[i]))
-        #             # import ipdb; ipdb.set_trace()
-        #             y_true.append(1)
-        #         else:
-        #             y_true.append(0)
-        #         if "Yes" in tokenizer.decode(preds[i]):
-        #             y_pred.append(1)
-        #         elif "Nope" in tokenizer.decode(preds[i]) or "No" in tokenizer.decode(preds[i]):
-        #             y_pred.append(0)
-        #         else:
-        #             y_pred.append(-1)
-        #         if y_pred[-1] == y_true[-1]:
-        #             T_F_correct += 1
-        #         if tokenizer.decode(labels[labels != -100][:-1]).lower() in tokenizer.decode(preds[i]).lower():
-        #             correct_dp = {}
-        #             correct_dp['label'] = tokenizer.decode(labels[labels != -100]).lower()
-        #             correct_dp['preds'] = tokenizer.decode(preds[i][preds[i] != eot_id]).lower()
-        #             correct_output_list.append(correct_dp)
-        #             label_list.append(tokenizer.decode(labels[labels != -100][:-1]))
-        #             correct += 1
-        #             idxs.append(i)
-        #             if ds[i]['truncated']:
-        #                 correct_count['correct_truncated'] += 1
-        #             if is_all_label_contained(tokenizer.decode(preds[i])):
-        #                 correct -= 1
-        #             else:
-        #                 correct_node_idxs.append(test_set_ids[i])
-        #         else:
-        #             error_dp = {}
-        #             error_dp['label'] = tokenizer.decode(labels[labels != -100]).lower()
-        #             error_dp['preds'] = tokenizer.decode(preds[i][preds[i] != eot_id]).lower()
-        #             error_output_list.append(error_dp)
-        # evaluator = Evaluator(name='ogbg-molhiv')
         if use_value_head:
             roc_auc = 0 # evaluator.eval({'y_true':np.expand_dims(np.array(y_true),axis=1),'y_pred':np.expand_dims(np.array(values),axis=1)})['rocauc']
         else:
@@ -486,7 +399,7 @@ if __name__ == "__main__":
         precision = true_positive / (true_positive + false_positive + 1e-10)
         recall = true_positive / (y_true == 1).sum()
         F1 = 2 * precision * recall / (precision + recall)
-        print("ACC {:.4f} ROC_AUC:{} F1:{:.4f} tp:{} fp :{} Precision:{:.4f} Recall:{:.4f} T_C_ACC: {:.4f}".format(correct/ len(test_set_ids),roc_auc, F1.item(), true_positive.item(),false_positive.item(), precision.item(), recall.item(),T_F_correct / len(test_set_ids)))
+        print("ACC {:.4f} ROC_AUC:{} F1:{:.4f} tp:{} fp :{} Precision:{:.4f} Recall:{:.4f} T_C_ACC: {:.4f} Format_Right:{} Predict_Right: {}".format(correct/ len(test_set_ids),roc_auc, F1.item(), true_positive.item(),false_positive.item(), precision.item(), recall.item(),T_F_correct / len(test_set_ids), all_pure_predict_format_right, all_pure_predict_correct))
         # for i in range(1,12):
         #     if i in all_degree_count.keys():
         #         print("Degree acc {}:  {:.4} {}".format(i, all_degree_correct[i]/all_degree_count[i], all_degree_count[i]))
@@ -504,6 +417,8 @@ if __name__ == "__main__":
         correct_count['T_C_ACC'] = T_F_correct / len(test_set_ids)
         correct_count['truncated_acc'] = correct_count['correct_truncated']/ correct_count['truncated']
         correct_count['non_truncate_acc'] = ( correct - correct_count['correct_truncated']) / (len(test_set_ids) - correct_count['truncated'])
+        correct_count['pure_format_right'] = all_pure_predict_format_right
+        correct_count['pure_predict_correct'] = all_pure_predict_correct
         
         # torch.save(label_list, "{}_labels.pt".format(save_name))
         # my_writer.add_scalar('accuracy',correct/ len(test_set_ids), ckpt_index)
@@ -512,7 +427,6 @@ if __name__ == "__main__":
         count_dict[curr_ckpt] = correct_count
         # print(correct_node_idxs)
     print(count_dict)
-    print(parent_checkpoint_path)
     print(base_model_path)
     print(global_ds_name)
     print(load_ds_name)

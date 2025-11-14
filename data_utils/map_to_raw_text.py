@@ -11,8 +11,8 @@ ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/molh
 task_type = np.where(np.array(ds['task_type'])=='classification')[0]
 ds = ds.select(task_type)
 raw_data = load_pubmed_raw_data(embeddings=True, graph=True, text_label=True,split_ids=True)
-raw_embeddings = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin',map_location='cpu')
-raw_text = torch.load('your_local_root_path/ogbg_molhiv/text_to_embedding.bin',map_location='cpu')
+raw_embeddings = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin',map_location='cpu')
+raw_text = torch.load('/data/sharefile/wei/dataset/ogbg_molhiv/text_to_embedding.bin',map_location='cpu')
 
 # graph = raw_data['graph']
 # graph = dgl.add_reverse_edges(graph)

@@ -1,3 +1,4 @@
+import weave
 from transformers import Trainer, AutoTokenizer,AutoModelForCausalLM, DataCollatorForLanguageModeling, TrainingArguments,LlamaConfig, set_seed
 from trl import SFTTrainer, SFTConfig, PPOConfig, GRPOConfig, GRPOTrainer
 import argparse
@@ -27,6 +28,7 @@ from datasets import load_dataset
 from trainers.mm_grpo_trainer import MM_GRPOTrainer
 # from models.reward_models import realRewardFetcher, StructureCheckRewardModel
 from models.graphAdapter import GraphAdapter4CausalLM
+from trainers.utils import wrap_trainer_no_eval_loss
 
 os.environ['WANDB_PROJECT'] = 'ICLR_Rebuttal'
 
@@ -66,7 +68,7 @@ def objective(args):
         tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
         # tokenizer.add_tokens([embedding_mask_str])#,begin_of_nodes_str,end_of_nodes_str,begin_of_edges_str,end_of_edges_str,one_edge_str,begin_of_node_embedding_str,end_of_node_embedding_str])
     else: 
-        base_model = AutoModelForCausalLM.from_pretrained(args.model_dir)
+        # base_model = AutoModelForCausalLM.from_pretrained(args.model_dir)
     
     # if config.tie_word_embeddings:
     #     model.lm_head.load_state_dict(model.model.embed_tokens.state_dict())
@@ -78,10 +80,14 @@ def objective(args):
         # model.pad_token_id = tokenizer.pad_token_id
         # model.embedding_mask_id = tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
         
-        base_model.pad_token_id = tokenizer.pad_token_id
+        # base_model.pad_token_id = tokenizer.pad_token_id
     embedding_mask_id = tokenizer.encode(embedding_mask_str, add_special_tokens=False)[0]
     # model = GraphAdapter4CausalLM.from_pretrained(args.model_dir,embedding_mask_id,args.connect_dir,args.LoRA_dir)
-    model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id)
+    if args.task == 'pretrain':
+        model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id)
+    else:
+        model = GraphAdapter4CausalLM.from_pretrained(model_dir = args.model_dir)
+    # model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id)
     ### fix LLM paramcd 
     for param in model.base_model.parameters():
         param.requires_grad = False
@@ -140,12 +146,19 @@ def objective(args):
         train_dataset = load_dataset('WeiChalk/NOCL_pretrain',split='train',streaming=True)
         test_dataset = train_dataset.take(100)
     elif args.task == 'prediction':
-        all_dataset = load_dataset('WeiChalk/NOCL_downstream',split='train',streaming=True)
+        all_dataset = load_dataset('WeiChalk/NOCL',split='train',streaming=True)
         # all_dataset = load_from_disk('../../LLM4Graph_tracked/datasets_local/all_downstream_dataset_32')
         train_dataset = all_dataset.filter(lambda example: example['split_set'] == 'train')#,num_proc=64)
-        test_dataset = all_dataset.filter(lambda example: example['split_set'] == 'test')#,num_proc=64)
+        test_dataset = all_dataset.filter(lambda example: example['split_set'] == 'test' and example['dataset_name'] == 'arxiv')#,num_proc=64)
     def chat_map(dp):
         QA_json = {}
+        request_key = ['unaligned_input_embeds','question','answer','dataset_name']
+        to_pop_key = []
+        for key in dp.keys():
+            if key not in request_key:
+                to_pop_key.append(key)
+        for key in to_pop_key:
+            dp.pop(key)
         question_str = dp.pop('question')
         answer_str = dp.pop('answer')
         QA_json['full'] = [
@@ -178,7 +191,7 @@ def objective(args):
     test_dataset = test_dataset.map(chat_map)#, num_proc=64)
     # max_seq_length = np.array(train_dataset['length']).max()
     train_dataset = train_dataset.filter(lambda example: example['length'] <= 1500)#,num_proc=64)
-    test_dataset = test_dataset.filter(lambda example: example['length'] <= 1500)#, num_proc=64)
+    test_dataset = test_dataset.filter(lambda example: example['length'] <= 1500)# and example['dataset_name'] =='arxiv')#, num_proc=64)
 
     # print("max seq length: ", max_seq_length)
     if args.use_fp16:
@@ -213,7 +226,7 @@ def objective(args):
         label_names=['labels'],
         # dataset_kwargs={"skip_prepare_dataset":True},
         run_name=args.run_name,
-        max_steps=2000,
+        max_steps=args.max_steps,
         # max_seq_length=max_seq_length
         accelerator_config={
             "dispatch_batches":False,
@@ -228,7 +241,9 @@ def objective(args):
         args=training_arguments,
         compute_metrics=eval_metric,
         callbacks=[saver],
+        processing_class = tokenizer,
     )
+    # trainer = wrap_trainer_no_eval_loss(trainer)
     global global_ref
     global_ref = trainer
     trainer.train()
@@ -291,7 +306,6 @@ def prediction_measurement(eval_pred, compute_result):
         global link_correct_num
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
-        import ipdb; ipdb.set_trace()
         label_ids = eval_pred.label_ids
         if isinstance(eval_pred.predictions, tuple):
             predictions = eval_pred.predictions[0].argmax(dim=-1)
@@ -521,6 +535,10 @@ if __name__ == "__main__":
         '--LoRA_dir',
         type=str,
         default=None
+    )
+    parser.add_argument(
+        '--max_steps',
+        type=int
     )
     args = parser.parse_args()
     set_seed(42)

@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 import torch
 from accelerate import Accelerator
 from data_utils.callback_saver import SaveTrainerCallBack,PredictionSaveTrainerCallBack
-from datasets import load_from_disk
+from datasets import load_from_disk, concatenate_datasets
 import torch.distributed as dist
 from data_utils.prompt_str import *
 import os,re
@@ -30,7 +30,7 @@ from trainers.mm_grpo_trainer import MM_GRPOTrainer
 from models.graphAdapter import GraphAdapter4CausalLM
 from trainers.utils import wrap_trainer_no_eval_loss
 
-os.environ['WANDB_PROJECT'] = 'ICLR_Rebuttal'
+os.environ['WANDB_PROJECT'] = 'eval_check'
 
 
 y_trues = []
@@ -58,7 +58,7 @@ not_log_output = True
 value_check = False
 global_similarity = 0.0
 eval_set_size = 0
-
+connector_dim = 768
 
 def objective(args):
     
@@ -84,9 +84,9 @@ def objective(args):
     embedding_mask_id = tokenizer.encode(embedding_mask_str, add_special_tokens=False)[0]
     # model = GraphAdapter4CausalLM.from_pretrained(args.model_dir,embedding_mask_id,args.connect_dir,args.LoRA_dir)
     if args.task == 'pretrain':
-        model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id)
+        model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id,connector_dim=connector_dim)
     else:
-        model = GraphAdapter4CausalLM.from_pretrained(model_dir = args.model_dir)
+        model = GraphAdapter4CausalLM.from_pretrained(model_dir = args.model_dir,connector_dim=connector_dim)
     # model = GraphAdapter4CausalLM.from_pretrained(base_model_dir=args.model_dir,embedding_mask_id=embedding_mask_id)
     ### fix LLM paramcd 
     for param in model.base_model.parameters():
@@ -100,9 +100,6 @@ def objective(args):
         global PLM
         PLM = SentenceTransformer('all-mpnet-base-v2').to(acctor.device)
     elif args.task == 'prediction':
-        if not args.combine_training:
-            for param in model.node_embedding_connect.parameters():
-                param.requires_grad = False
         if not args.use_rl:
             collator = InstructEmbedsPretrainCollator(tokenizer=tokenizer,mlm=False, use_fp16=args.use_fp16)
         else:
@@ -140,18 +137,45 @@ def objective(args):
         else:
             model = get_peft_model(model, lora_config)
             model.print_trainable_parameters()
-    
+            if args.combine_training:
+                for param in model.base_model.model.node_embedding_connect.parameters():
+                    param.requires_grad = True
+            
+
     # train_dataset, test_dataset = load_dataset(args.dataset_dir,tokenizer)
     if args.task == 'pretrain': 
-        train_dataset = load_dataset('WeiChalk/NOCL_pretrain',split='train',streaming=True)
-        test_dataset = train_dataset.take(100)
+        if connector_dim == 384:
+            datasets_list = []
+            data_dirs = ['arxiv_pretrain',  'cora_pretrain', 'pubmed_pretrain','products_pretrain']
+            for data_dir in data_dirs:
+                datasets_list.append(load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_pretrain/'+ data_dir))
+            train_dataset = concatenate_datasets(datasets_list)
+            test_dataset = train_dataset.take(100)
+        else:
+            train_dataset = load_dataset('WeiChalk/NOCL_pretrain',split='train',streaming=True)
+            test_dataset = train_dataset.take(100)
     elif args.task == 'prediction':
-        all_dataset = load_dataset('WeiChalk/NOCL',split='train',streaming=True)
-        # all_dataset = load_from_disk('../../LLM4Graph_tracked/datasets_local/all_downstream_dataset_32')
-        train_dataset = all_dataset.filter(lambda example: example['split_set'] == 'train')#,num_proc=64)
-        test_dataset = all_dataset.filter(lambda example: example['split_set'] == 'test' and example['dataset_name'] == 'arxiv')#,num_proc=64)
+        if connector_dim == 384:
+            arxiv_ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_downstream/arxiv')
+            arxiv_structure_ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_downstream/arxiv_structure').take(len(arxiv_ds))
+            cora_link_ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_downstream/cora_link_ds')
+            pubmed_link_ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_downstream/pubmed_link_ds')
+            datasets_list = [arxiv_ds, arxiv_structure_ds, cora_link_ds, pubmed_link_ds]
+            all_dataset = concatenate_datasets(datasets_list)
+            train_dataset = all_dataset.filter(lambda example: example['split_set'] == 'train')
+            test_dataset = arxiv_ds.filter(lambda example: example['split_set'] == 'test').take(1000)
+        else:
+            # all_dataset = load_dataset('WeiChalk/NOCL',split='train',streaming=True)
+            all_dataset = load_from_disk('../../LLM4Graph_tracked/datasets_local/all_downstream_dataset_32')
+            train_classification_dataset = all_dataset.filter(lambda example: example['split_set'] == 'train' and example['task_type'] == 'classification' and example['dataset_name'] == 'WN18RR', num_proc=64)
+            # train_structure_dataset = all_dataset.select(range(500000)).filter(lambda example: example['split_set'] == 'train' and example['task_type'] != "classification", num_proc=16).select(range(80000))
+            # train_dataset = all_dataset.filter(lambda example: example['split_set'] == 'train',num_proc=64)
+            train_dataset = concatenate_datasets([train_classification_dataset])#, train_structure_dataset])
+            test_dataset = all_dataset.filter(lambda example: example['split_set'] == 'test' and example['dataset_name'] == 'WN18RR',num_proc=16)
     def chat_map(dp):
         QA_json = {}
+        if dp['unaligned_input_embeds'] is None:
+            dp['unaligned_input_embeds'] = dp['unalgined_input_embeds']
         request_key = ['unaligned_input_embeds','question','answer','dataset_name']
         to_pop_key = []
         for key in dp.keys():
@@ -186,12 +210,49 @@ def objective(args):
         dp['labels'] = labels.tolist()
         dp['length'] = len(dp['input_ids'])
         return dp
-
-    train_dataset = train_dataset.map(chat_map)#, num_proc=64)
-    test_dataset = test_dataset.map(chat_map)#, num_proc=64)
+    def test_chat_map(dp):
+        QA_json = {}
+        if dp['unaligned_input_embeds'] is None:
+            dp['unaligned_input_embeds'] = dp['unalgined_input_embeds']
+        request_key = ['unaligned_input_embeds','question','answer','dataset_name']
+        to_pop_key = []
+        for key in dp.keys():
+            if key not in request_key:
+                to_pop_key.append(key)
+        for key in to_pop_key:
+            dp.pop(key)
+        question_str = dp.pop('question')
+        answer_str = dp.pop('answer')
+        QA_json['full'] = [
+            {
+                'role': 'user',
+                'content': question_str
+            },
+            {
+                'role': 'assistant',
+                'content': answer_str,
+            }
+        ]
+        QA_json['question_only'] = [
+            {
+                'role': 'user',
+                'content': question_str
+            }
+        ]
+        full_chat = tokenizer.apply_chat_template(QA_json['full'],return_tensors='pt')[0]
+        question_only = tokenizer.apply_chat_template(QA_json['question_only'],return_tensors='pt',add_generation_prompt=True)[0]
+        dp['input_ids'] = question_only.tolist() #tokenizer.encode(full_chat,add_special_tokens=False,return_tensors='pt')
+        labels = full_chat.clone()
+        prompt_length = question_only.shape[0]
+        labels[:prompt_length] = -100
+        dp['labels'] = labels.tolist()
+        dp['length'] = len(dp['input_ids'])
+        return dp
+    train_dataset = train_dataset.map(chat_map, num_proc=16)
+    test_dataset = test_dataset.map(chat_map, num_proc=16)
     # max_seq_length = np.array(train_dataset['length']).max()
-    train_dataset = train_dataset.filter(lambda example: example['length'] <= 1500)#,num_proc=64)
-    test_dataset = test_dataset.filter(lambda example: example['length'] <= 1500)# and example['dataset_name'] =='arxiv')#, num_proc=64)
+    train_dataset = train_dataset.filter(lambda example: example['length'] <= 1500, num_proc=16)
+    test_dataset = test_dataset.filter(lambda example: example['length'] <= 1500, num_proc=16)# and example['dataset_name'] =='arxiv')#, num_proc=64)
 
     # print("max seq length: ", max_seq_length)
     if args.use_fp16:
@@ -205,14 +266,15 @@ def objective(args):
         logging_dir=args.log_dir,
         per_device_train_batch_size=args.train_size,
         per_device_eval_batch_size=args.eval_size,
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=4,
         remove_unused_columns=False,
         fp16=False,
         learning_rate=args.lr,
         # lr_scheduler_type='constant_with_warmup',
         warmup_steps=100,
-        # num_train_epochs=args.epoch,
-        save_strategy='no',
+        num_train_epochs=args.epoch,
+        save_strategy='steps',
+        save_steps=args.eval_steps,
         eval_strategy='steps',
         eval_steps=args.eval_steps,
         # max_grad_norm=1,
@@ -221,23 +283,25 @@ def objective(args):
         batch_eval_metrics=True,
         # eval_do_concat_batches=True,
         # auto_find_batch_size=True,
-        # dataloader_num_workers=16,
-        include_for_metrics=['loss'],
+        dataloader_num_workers=16,
+        include_for_metrics=['loss','inputs'],
         label_names=['labels'],
         # dataset_kwargs={"skip_prepare_dataset":True},
         run_name=args.run_name,
-        max_steps=args.max_steps,
+        # max_steps=args.max_steps,
         # max_seq_length=max_seq_length
+        max_length=1500,
         accelerator_config={
             "dispatch_batches":False,
             "split_batches": False,
         },
+        # resume_from_checkpoint='/data/sharefile/wei/workspace/LLM4Graph_clean/NodeConceptLLM/ckpts/for_resume/checkpoint-25000'
     )
     trainer = SFTTrainer(
         model=model,
         data_collator=collator,
         train_dataset=train_dataset,
-        eval_dataset=test_dataset,
+        eval_dataset=test_dataset.select(range(200)),
         args=training_arguments,
         compute_metrics=eval_metric,
         callbacks=[saver],
@@ -307,8 +371,10 @@ def prediction_measurement(eval_pred, compute_result):
         eot_id, eos_id = tokenizer.convert_tokens_to_ids(['<|eot_id|>','<|end_of_text|>'])
         torch.cuda.empty_cache()
         label_ids = eval_pred.label_ids
+        import ipdb; ipdb.set_trace()
         if isinstance(eval_pred.predictions, tuple):
             predictions = eval_pred.predictions[0].argmax(dim=-1)
+            # attention_mask = eval_pred.inputs['attention_mask'].bool
             if value_check:
                 predicted_values = eval_pred.predictions[1]
             # if not isinstance(eval_pred.predictions[1],tuple):
@@ -317,23 +383,26 @@ def prediction_measurement(eval_pred, compute_result):
                 predicted_values = None
         else:
             predictions = eval_pred.predictions.argmax(dim=-1)
+            output_mask = label_ids != -100
             predicted_values = None
         # new_labels = -100 * torch.ones_like(predictions,dtype=label_ids.dtype, device=label_ids.device)
         labels_length = (label_ids != -100).sum(dim=1)
+        first_non_input_idx = (label_ids != -100).type(torch.int).argmax(dim=1)
         # first_eot_idx = (predictions == eot_id).type(torch.int32).argmax(dim=1)
         # first_eos_idx = (predictions == eos_id).type(torch.int32).argmax(dim=1)
         prompt_end_poses = torch.argmax((label_ids != -100).int(),dim=1)
         batch_correct_num = 0
         log_to_wandb = False
-        if np.random.random() > 0.1 and global_ref.state.is_world_process_zero:
+        if np.random.random() > 0.2 and global_ref.state.is_world_process_zero:
             log_to_wandb = True
             table = wandb.Table(columns=['labels', 'generated'])
         for i in range(predictions.shape[0]):
             
             current_label_with_think = tokenizer.decode(label_ids[i][label_ids[i] != -100])
             current_labels = current_label_with_think.split('</think>')[-1]
+            current_predict = predictions[i][0:-1][output_mask[i][1:]]
             if log_to_wandb:
-                table.add_data(current_labels, tokenizer.decode(predictions[i]))
+                table.add_data(current_labels, tokenizer.decode(predictions[i][first_non_input_idx[i]-1:]))
             if "Yes" in current_labels or  "Nope" in current_labels:
                 if "nodes" not in current_labels:
                     graph_prediction_num += 1
@@ -351,7 +420,7 @@ def prediction_measurement(eval_pred, compute_result):
                         link_correct_num += 1
             else:
                 node_prediction_num += 1
-                if current_labels in tokenizer.decode(predictions[i]):
+                if current_labels in tokenizer.decode(current_predict):
                     batch_correct_num += 1
                     node_correct_num += 1
         if log_to_wandb:

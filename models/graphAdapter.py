@@ -21,12 +21,12 @@ except Exception:
 
 class GraphAdapter4CausalLM(nn.Module):
 
-    def __init__(self, base_model:PreTrainedModel,embedding_mask_id:int):
+    def __init__(self, base_model:PreTrainedModel,embedding_mask_id:int,connector_dim=768):
         super().__init__()
         self.base_model = base_model
         hidden_size = base_model.get_input_embeddings().embedding_dim
         self.node_embedding_connect = nn.Sequential(
-            nn.Linear(768, hidden_size)
+            nn.Linear(connector_dim, hidden_size)
         )
         self.embedding_mask_id = embedding_mask_id
         self.config = base_model.config
@@ -107,6 +107,7 @@ class GraphAdapter4CausalLM(nn.Module):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         if 'model_dir' in kwargs.keys():
+            connector_dim = kwargs['connector_dim'] if 'connector_dim' in kwargs.keys() else 768
             path = Path(kwargs['model_dir'])
             # 1) Load wrapper config
             cfg_path = path / CONFIG_NAME
@@ -143,7 +144,8 @@ class GraphAdapter4CausalLM(nn.Module):
             # )
             model = cls(
                 base_model,
-                embedding_mask_id
+                embedding_mask_id,
+                connector_dim
             )
 
             # 4) Load head weights
@@ -159,7 +161,8 @@ class GraphAdapter4CausalLM(nn.Module):
                 raise FileNotFoundError(f"Neither {HEAD_SAFE} nor {HEAD_BIN} found at {path}")
 
             missing, unexpected = model.node_embedding_connect.load_state_dict(head_state, strict=True)
-
+            print("missing state: ",missing)
+            print("unexpected state:", unexpected)
             # # 5) Final dtype/device placement
             # if dtype is not None:
             #     model = model.to(dtype=dtype)
@@ -171,9 +174,10 @@ class GraphAdapter4CausalLM(nn.Module):
             embedding_mask_id = kwargs['embedding_mask_id']
             connect_dir = kwargs['connect_dir'] if 'connect_dir' in kwargs.keys() else None
             LoRA_dir = kwargs['LoRA_dir'] if 'LoRA_dir' in kwargs.keys() else None
+            connector_dim = kwargs['connector_dim'] if 'connector_dim' in kwargs.keys() else 768
             
             base_model = AutoModelForCausalLM.from_pretrained(base_model_dir)
-            model = GraphAdapter4CausalLM(base_model,embedding_mask_id)
+            model = GraphAdapter4CausalLM(base_model,embedding_mask_id,connector_dim=connector_dim)
             if LoRA_dir is not None:
                 peft_model = PeftModel.from_pretrained(model, LoRA_dir)
                 model = peft_model.base_model.merge_and_unload()

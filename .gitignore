@@ -1,4 +1,5 @@
 base_models
+base_model
 datasets_local
 dataset
 *.pyc
@@ -7,3 +8,4 @@ wandb
 ckpts
 *.ipynb
 eval_outputs
+.vscode

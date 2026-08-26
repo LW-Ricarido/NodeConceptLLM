@@ -21,9 +21,11 @@ import json,re,time
 
 import multiprocess as mp
 from models.graphAdapter import GraphAdapter4CausalLM
+from accelerate import Accelerator
+from safetensors.torch import load_file as safe_load_file
 
-global_ds_name = 'arxiv'
-max_new_tokens = 800
+global_ds_name = 'pubmed'
+max_new_tokens = 20
 batch_size = 64
 use_half = True
 change_order = False
@@ -37,6 +39,10 @@ elif global_ds_name == 'cora':
     all_labels = ['Case Based', 'Genetic Algorithms', 'Neural Networks', 'Probabilistic Methods', 'Reinforcement Learning', 'Rule Learning','Theory']
 elif global_ds_name == 'arxiv':
     all_labels = ['Artificial Intelligence', 'Hardware Architecture', 'Computational Complexity', 'Computational Engineering, Finance, and Science', 'Computational Geometry', 'Computation and Language', 'Cryptography and Security', 'Computer Vision and Pattern Recognition', 'Computers and Society', 'Databases', 'Distributed, Parallel, and Cluster Computing', 'Digital Libraries', 'Discrete Mathematics', 'Data Structures and Algorithms', 'Emerging Technologies', 'Formal Languages and Automata Theory', 'General Literature', 'Graphics', 'Computer Science and Game Theory', 'Human-Computer Interaction', 'Information Retrieval', 'Information Theory', 'Machine Learning', 'Logic in Computer Science', 'Multiagent Systems', 'Multimedia', 'Mathematical Software', 'Numerical Analysis', 'Neural and Evolutionary Computing', 'Networking and Internet Architecture', 'Other Computer Science', 'Operating Systems', 'Performance', 'Programming Languages', 'Robotics', 'Symbolic Computation', 'Sound', 'Software Engineering', 'Social and Information Networks', 'Systems and Control']
+elif global_ds_name == 'products':
+    all_labels = ["Home & Kitchen","Health & Personal Care", "Beauty", "Sports & Outdoors", "Books", "Patio, Lawn & Garden", "Toys & Games", "CDs & Vinyl", "Cell Phones & Accessories", "Grocery & Gourmet Food", "Arts, Crafts & Sewing", "Clothing, Shoes & Jewelry", "Electronics", "Movies & TV", "Software", "Video Games", "Automotive", "Pet Supplies", "Office Products",   "Industrial & Scientific", "Musical Instruments", "Tools & Home Improvement", "Magazine Subscriptions", "Baby Products", "NaN", "Appliances", "Kitchen & Dining", "Collectibles & Fine Art", "All Beauty", "Luxury Beauty",            "Amazon Fashion",                 "Computers",           "All Electronics",          "Purchase Circles", "MP3 Players & Accessories",                "Gift Cards",  "Office & School Supplies",          "Home Improvement",            "Camera & Photo",          "GPS & Navigation", "Digital Music", "Car Electronics", "Baby", "Kindle Store", "Buy a Kindle",    "Furniture & Decor","unknown label"]
+elif global_ds_name == 'WN18RR':
+    all_labels = ["also_see","derivationally_related_form","has_part","hypernym","instance_hypernym","member_meronym","member_of_domain_region","member_of_domain_usage","similar_to","synset_domain_topic_of","verb_group"]
 else:
     all_labels = ['Yes', 'No']
 
@@ -109,46 +115,60 @@ if __name__ == "__main__":
     '''
         This is for Graph Embedding QA prediction Task
     '''
-    load_ds_name = 'arxiv_graph_embedding_QA'
-    # ds = load_from_disk('datasets_local/with_node_index/arxiv')
-    ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
+    # load_ds_name = 'arxiv'
+    ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/all_downstream_dataset_32')
+    # ds  = load_from_disk('../../LLM4Graph_tracked/datasets_local/with_node_index/arxiv')
+    # ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/json_texts_datasets/prediction_datasets/arxiv_graph_embedding_QA')
+    # ds = load_from_disk('../../LLM4Graph_tracked/datasets_local/multi-qa-MiniLM-L6-cos-v1_downstream/{}'.format(global_ds_name))
+    # if 'arxiv' in global_ds_name:
+    # ds = ds.filter(lambda example:  example['split_set'] == 'test' and example['task_type'] == 'classification',num_proc=32)
+    #     ds = ds.filter(lambda example: example['split_set'] == 'train', num_proc=32)
+    # ds = ds.filter(lambda example:  example['dataset_name'] == global_ds_name and example['task_type'] == 'classification',num_proc=32)
+
+    ds = ds.filter(lambda example:  example['split_set'] == 'test' and example['dataset_name'] == global_ds_name and example['task_type'] == 'classification',num_proc=32)
     # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/{}_graph_embedding_QA_pure_nodes_with_element_type_count_cot'.format(global_ds_name))
     # ds = load_from_disk('datasets_local/json_texts_datasets/prediction_datasets/cora_link_prediction')
-    connector_path_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/node_embedding_connect.pt"
-    lora_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/lora_adapter"
+    # connector_path_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/node_embedding_connect.pt"
+    # lora_dir = "ckpts/Qwen2_5_1_5B/combine_pretrain_no_add_tokens2025-09-17 14:35:49.274360/checkpoint-1570000/lora_adapter"
     correct_node_idxs = []
-    if global_ds_name == 'arxiv' or global_ds_name == 'mutag' or global_ds_name == 'molhiv' or 'link' in global_ds_name or 'cora' in global_ds_name:
-        test_set_ids = np.where((np.array(ds['split_set']) == 'test') * (np.array(ds['task_type'])== 'classification'))[0]
-    else:
-        # test_set_ids = np.arange(len(ds))
-        test_set_ids = np.where((np.array(ds['task_type']) == 'classification'))[0]
+    # if global_ds_name == 'arxiv' or global_ds_name == 'mutag' or global_ds_name == 'molhiv' or 'link' in global_ds_name or 'cora' in global_ds_name:
+    #     test_set_ids = np.where((np.array(ds['split_set']) == 'test') * (np.array(ds['task_type'])== 'classification'))[0]
+    # else:
+    test_set_ids = np.arange(len(ds))
+    # test_set_ids = np.where((np.array(ds['task_type']) == 'classification'))[0]
     
     print("=============length of :",len(test_set_ids))
     print("==================batch size:", batch_size)
+    print('===============global_ds_name:', global_ds_name)
     
-    base_model_path = "Qwen/Qwen2.5-1.5B-Instruct"
+    # base_model_path = "base_model/Llama-3.2-1B-Instruct_384_connector_4090_pretrain_ckpt_195000"
+    # connect_dim=384
+    # base_model_path = "../../LLM4Graph_tracked/base_models/llama3_2_1B_Instruct_pretrained_4090_ckpt_2550000_iclr"
+    base_model_path = 'base_model/llama3_2_1B_Instruct_resumed_from_ckpt18000'
+    connect_dim=768
     
     print(base_model_path)
-    print(load_ds_name)
+    print(global_ds_name)
     print('change order:{} zero modify:{}'.format(change_order, zero_modify))
-    tokenizer = AutoTokenizer.from_pretrained(base_model_path)
+    tokenizer = AutoTokenizer.from_pretrained("../../LLM4Graph_tracked/base_models/llama3_2_1B_Instruct_pretrained_4090_ckpt_2550000_iclr")
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.add_tokens([embedding_mask_str])#,begin_of_nodes_str,end_of_nodes_str,begin_of_edges_str,end_of_edges_str,one_edge_str])
+    # tokenizer.add_tokens([embedding_mask_str])#,begin_of_nodes_str,end_of_nodes_str,begin_of_edges_str,end_of_edges_str,one_edge_str])
     embedding_mask_id = tokenizer.encode(embedding_mask_str, add_special_tokens=False)[0]
     def chat_map(dp):
         QA_json = {}
         question_str = dp.pop('question')
         answer_str = dp.pop('answer')
+        if dp['unaligned_input_embeds'] is None:
+            dp['unaligned_input_embeds'] = dp['unalgined_input_embeds']
         # dp.pop('unaligned_input_embeds')
-        question_str = question_str.replace(":Diabetes Mellitus, Experimental; Diabetes Mellitus Type 1; Diabetes Mellitus Type 2",
-                                            ": Diabetes Type 1; Diabetes Type 2; Diabetes Experiments")
-        question_str = question_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
-        question_str = question_str.replace('Diabetes Mellitus Type 1', 'Diabetes Type 1')
-        question_str = question_str.replace('Diabetes Mellitus Type 2', 'Diabetes Type 2')
-        answer_str = answer_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
-        answer_str = answer_str.replace('Diabetes Mellitus Type 1', 'Diabetes Type 1')
-        answer_str = answer_str.replace('Diabetes Mellitus Type 2', 'Diabetes Type 2')
-        question_str = question_str.split('Please classify the node 0 into')[0] + " Based on its own and other nodes' node features and the graph structure, classify node 0 into one of the following list: Artificial Intelligence; Hardware Architecture; Computational Complexity; Computational Engineering, Finance, and Science; Computational Geometry; Computation and Language; Cryptography and Security; Computer Vision and Pattern Recognition; Computers and Society; Databases; Distributed, Parallel, and Cluster Computing; Digital Libraries; Discrete Mathematics; Data Structures and Algorithms; Emerging Technologies; Formal Languages and Automata Theory; General Literature; Graphics; Computer Science and Game Theory; Human-Computer Interaction; Information Retrieval; Information Theory; Machine Learning; Logic in Computer Science; Multiagent Systems; Multimedia; Mathematical Software; Numerical Analysis; Neural and Evolutionary Computing; Networking and Internet Architecture; Other Computer Science; Operating Systems; Performance; Programming Languages; Robotics; Symbolic Computation; Sound; Software Engineering; Social and Information Networks; Systems and Control."
+        # question_str = question_str.replace(":Diabetes Mellitus, Experimental; Diabetes Mellitus Type 1; Diabetes Mellitus Type 2",
+        #                                     ": Diabetes Type 1; Diabetes Type 2; Diabetes Experiments")
+        # question_str = question_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
+        # question_str = question_str.replace('Diabetes Mellitus Type 1', 'Diabetes Type 1')
+        # question_str = question_str.replace('Diabetes Mellitus Type 2', 'Diabetes Type 2')
+        # answer_str = answer_str.replace('Diabetes Mellitus, Experimental', 'Diabetes Experiments')
+        # answer_str = answer_str.replace('Diabetes Mellitus Type 1', 'Diabetes Type 1')
+        # answer_str = answer_str.replace('Diabetes Mellitus Type 2', 'Diabetes Type 2')
         QA_json['full'] = [
             {
                 'role': 'user',
@@ -162,11 +182,11 @@ if __name__ == "__main__":
         QA_json['question_only'] = [
             {
                 'role': 'user',
-                'content': question_str
+                'content': question_str 
             }
         ]
-        full_chat = tokenizer.apply_chat_template(QA_json['full'],return_tensors='pt',enable_thinking=False)[0]
-        question_only = tokenizer.apply_chat_template(QA_json['question_only'],return_tensors='pt',add_generation_prompt=True, enable_thinking=False)[0]
+        full_chat = tokenizer.apply_chat_template(QA_json['full'],return_tensors='pt')[0]
+        question_only = tokenizer.apply_chat_template(QA_json['question_only'],return_tensors='pt',add_generation_prompt=True)[0]
         dp['input_ids'] = full_chat.tolist() #tokenizer.encode(full_chat,add_special_tokens=False,return_tensors='pt')
         labels = full_chat.clone()
         prompt_length = question_only.shape[0]
@@ -180,20 +200,27 @@ if __name__ == "__main__":
     
     use_value_head = False
 
-    ckpts_dirs = ['40000']
-    # for i in range(450000,600000,5000):
+    ckpts_dirs = ['60000','58000','56000','54000','52000']
+    # for i in range(105000,145000,2500):
     #     ckpts_dirs.append(str(i))
     # # ckpts_dirs = ['105000']#,'6001','7001','9601']#,'16000']#,'150000','160000','167000']#,'67000','80000']#,'24000','25000']
     count_dict = {}
-    parent_checkpoint_path = 'ckpts/Qwen2_5_1_5B/no_add_tokens_rl_warmup_no_random2025-09-29 23:46:59.366590'
+    # parent_checkpoint_path = 'ckpts/new_PLM/combine_training2025-11-26 12:57:49.143369'
+    # parent_checkpoint_path = 'ckpts/from_h200/WN18RR_test_8card'
+    parent_checkpoint_path = 'ckpts/h100_order_change_resumed/52000-60000'
+    # parent_checkpoint_path = 'ckpts/resume/llama3_2_1B_Instruct_prediction_lr005_resume_from_h2002025-11-24 20:06:24.281348'
     for curr_ckpt in ckpts_dirs:
         # curr_ckpt = str(ckpt_index)
         torch.cuda.empty_cache()
-        model = GraphAdapter4CausalLM.from_pretrained(base_model_path, embedding_mask_id,connect_dir=connector_path_dir,LoRA_dir=lora_dir)
+        model= GraphAdapter4CausalLM.from_pretrained(model_dir=base_model_path,connector_dim=connect_dim)
+        # model = GraphAdapter4CausalLM.from_pretrained(base_model_path, embedding_mask_id,connect_dir=connector_path_dir,LoRA_dir=lora_dir)
         # model.node_embedding_connect.load_state_dict(torch.load(connector_path_dir,weights_only=False).state_dict())
         if  curr_ckpt != 'zero_shot':
             if not use_value_head:
-                peft_model = PeftModel.from_pretrained(model,"{}/checkpoint-{}/lora_adapter".format(parent_checkpoint_path,curr_ckpt))
+                if 'node_embedding_connect.safetensors' in os.listdir(os.path.join(parent_checkpoint_path, 'checkpoint-{}'.format(curr_ckpt))):
+                    head_state = safe_load_file(os.path.join(parent_checkpoint_path, 'checkpoint-{}'.format(curr_ckpt),'node_embedding_connect.safetensors'), device= "cpu")
+                    model.node_embedding_connect.load_state_dict(head_state, strict=True)
+                peft_model = PeftModel.from_pretrained(model,"{}/checkpoint-{}".format(parent_checkpoint_path,curr_ckpt))
             else:
                 peft_model = LLama4GraphWithValueHead.from_pretrained(base_model)
                 peft_model.load_state_dict(torch.load('{}/checkpoint-{}/pytorch_model.bin'.format(parent_checkpoint_path,curr_ckpt),map_location='cpu'),strict=False)
@@ -231,6 +258,7 @@ if __name__ == "__main__":
         )
         correct_count = {'truncated':0,'correct_truncated': 0}
         reasoning_save_list = []
+        peft_model.eval()
         with torch.no_grad():
             for index, batch_data in enumerate(tqdm(test_dataloader, desc='Testing Process')):
                 for i in range(len(batch_data['unaligned_inputs_embeds'])):
@@ -238,7 +266,6 @@ if __name__ == "__main__":
                 batch_data['input_ids'] = batch_data['input_ids'].to(device)
                 batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
                 batch_res = peft_model.generate(max_new_tokens=max_new_tokens,generation_config = peft_model.base_model.generation_config, **batch_data)
-                
                 if not use_value_head:
                     res_list.append(batch_res)
                 else:
@@ -303,13 +330,13 @@ if __name__ == "__main__":
                 #     return_dict['origin_1_hop_correct'][origin_1_hop_size] = 0
                 #     return_dict['origin_1_hop_count'][origin_1_hop_size] = 0
                 # return_dict['origin_1_hop_count'][origin_1_hop_size] += 1
-                current_predict = tokenizer.decode(preds[idx]).split('assistant\n')[-1]
+                current_predict = tokenizer.decode(preds[idx]).split('assistant<|end_header_id|>\n\n')[-1]
                 if len(current_predict.split('</think>')) > 1:
                     pure_predict = current_predict.split('</think>')[-1]
                 else:
                     pure_predict = None
-                if ds[idx]['truncated']:
-                    return_dict['truncated'] += 1
+                # if ds[idx]['truncated']:
+                #     return_dict['truncated'] += 1
                 if "Yes" in tokenizer.decode(labels[labels != -100][:-1]):
                     # print(tokenizer.decode(preds[idx]))
                     # import ipdb; ipdb.set_trace()
@@ -333,8 +360,10 @@ if __name__ == "__main__":
                     # return_dict['origin_1_hop_correct'][origin_1_hop_size] += 1
                     if is_all_label_contained(current_predict):
                         correct -= 1
-                    if ds[idx]['truncated']:
-                        return_dict['correct_truncated'] += 1
+                    # if ds[idx]['truncated']:
+                    #     return_dict['correct_truncated'] += 1
+                # else:
+                #     print('label: {}  predict: {}'.format(tokenizer.decode(labels[labels != -100][:-1]).lower(), current_predict.lower()))
                 if pure_predict is not None:
                     pure_predict_format_right += 1
                     if tokenizer.decode(labels[labels != -100][:-1]).lower() in pure_predict.lower() and not is_all_label_contained(pure_predict):
@@ -350,7 +379,7 @@ if __name__ == "__main__":
             return return_dict
         
         my_pool = []
-        seg= len(preds) // process_number
+        seg= (len(preds) // process_number) + 1
         bot = time.time()
         with mp.Pool(processes=process_number) as pool:
             for i in range(process_number):
@@ -380,6 +409,7 @@ if __name__ == "__main__":
                 #         origin_1hop_correct[key] = 0
                 #     origin_1hop_correct[key] += current_res['origin_1_hop_correct'][key]
                 #     origin_1hop_count[key] += current_res['origin_1_hop_count'][key]
+        # import ipdb; ipdb.set_trace()
         correct = all_correct
         y_pred = all_y_pred
         y_true = all_y_true
@@ -415,8 +445,8 @@ if __name__ == "__main__":
         correct_count['fp'] = false_positive.item()
         correct_count['acc'] = correct/ len(test_set_ids) 
         correct_count['T_C_ACC'] = T_F_correct / len(test_set_ids)
-        correct_count['truncated_acc'] = correct_count['correct_truncated']/ correct_count['truncated']
-        correct_count['non_truncate_acc'] = ( correct - correct_count['correct_truncated']) / (len(test_set_ids) - correct_count['truncated'])
+        # correct_count['truncated_acc'] = correct_count['correct_truncated']/ correct_count['truncated']
+        # correct_count['non_truncate_acc'] = ( correct - correct_count['correct_truncated']) / (len(test_set_ids) - correct_count['truncated'])
         correct_count['pure_format_right'] = all_pure_predict_format_right
         correct_count['pure_predict_correct'] = all_pure_predict_correct
         
@@ -429,7 +459,8 @@ if __name__ == "__main__":
     print(count_dict)
     print(base_model_path)
     print(global_ds_name)
-    print(load_ds_name)
+    print(parent_checkpoint_path)
+    # print(load_ds_name)
     print('use Half: ', use_half)
     print('change order:{} zero_modify:{}'.format(change_order, zero_modify))
 

@@ -56,9 +56,10 @@ class Embeds2TextCollator(DataCollatorForLanguageModeling):
 class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
     
 
-    def __init__(self,use_fp16: bool = False, *args, **kwargs):
+    def __init__(self, use_fp16: bool = False, mask_eos: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_fp16 = use_fp16
+        self.mask_eos = mask_eos
     def torch_call(self, examples):
         '''
             examples.keys:
@@ -71,13 +72,17 @@ class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
         batch = pad_without_fast_tokenizer_warning(
             self.tokenizer, {'input_ids':[example['input_ids'] for example in examples]}, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of
         )
-        labels = batch["input_ids"].clone()
+        # Initialize labels as ignored, then copy the complete per-example
+        # labels into the non-padding prefix.  Do not mask by token ID here:
+        # many Llama tokenizers use eos_token as pad_token, and doing so would
+        # accidentally remove the real EOS target from the assistant answer.
+        labels = torch.full_like(batch["input_ids"], -100)
         
         for i in range(labels.shape[0]):
             labels[i,:len(examples[i]['labels'])] = torch.tensor(examples[i]['labels'],dtype=labels.dtype,device=labels.device)
+        if self.mask_eos and self.tokenizer.eos_token_id is not None:
+            labels[labels == self.tokenizer.eos_token_id] = -100
         batch['labels'] = labels
-        if self.tokenizer.pad_token_id is not None:
-            batch['labels'][batch['labels'] == self.tokenizer.pad_token_id] = -100
         embedding_length = set()
         if 'unaligned_input_embeds' in examples[0].keys():
             for example in examples:
@@ -92,10 +97,17 @@ class InstructEmbedsPretrainCollator(DataCollatorForLanguageModeling):
                 batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device).half() for example in examples]
             else:
                 batch['unaligned_inputs_embeds'] = [torch.tensor(example['unaligned_input_embeds'],device=labels.device) for example in examples]
-            embedding_mask_id =  self.tokenizer.encode(embedding_mask_str,add_special_tokens=False)[0]
-            batch['embedding_positions'] = []
-            for i in range(len(examples)):
-                batch['embedding_positions'].append(torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten())
+            if 'embedding_positions' in examples[0]:
+                batch['embedding_positions'] = [
+                    torch.as_tensor(example['embedding_positions'], dtype=torch.long)
+                    for example in examples
+                ]
+            else:
+                embedding_mask_id = self.tokenizer.encode(embedding_mask_str, add_special_tokens=False)[0]
+                batch['embedding_positions'] = [
+                    torch.nonzero(batch['input_ids'][i] == embedding_mask_id).flatten()
+                    for i in range(len(examples))
+                ]
         # batch['embedding_positions'] = [torch.tensor(example['embedding_positions'],dtype=torch.long,device=labels.device) for example in examples]
         return batch
         # return super().torch_call(examples)

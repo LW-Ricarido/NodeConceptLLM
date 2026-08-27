@@ -49,21 +49,32 @@ class GraphAdapter4CausalLM(nn.Module):
     
     def align_embeddings(self, *args, **kwargs):
         unaligned_inputs_embeds = kwargs.pop('unaligned_inputs_embeds')
-        if "input_embeds" in kwargs.keys() and "embedding_positions" not in kwargs.keys():
-            import ipdb; ipdb.set_trace()
-        if "embedding_positions" in kwargs.keys():
-            kwargs.pop("embedding_positions")
+        embedding_positions = kwargs.pop("embedding_positions", None)
         input_ids = kwargs.pop('input_ids')
         inputs_embeds = self.base_model.get_input_embeddings()(input_ids)
-        for i in range(input_ids.shape[0]):
-            embedding_positions = torch.nonzero(input_ids[i] == self.embedding_mask_id).flatten()
-            current_aligned_inputs_embeds = self.node_embedding_connect(unaligned_inputs_embeds[i].to(inputs_embeds))
-            if embedding_positions.shape[0] != current_aligned_inputs_embeds.shape[0]:
-                print('=============================wtf')
-                import traceback
-                traceback.print_exc()
-                import ipdb; ipdb.set_trace()
-            inputs_embeds[i][embedding_positions] = current_aligned_inputs_embeds.to(inputs_embeds.dtype) 
+        if embedding_positions is None:
+            embedding_positions = [
+                torch.nonzero(input_ids[i] == self.embedding_mask_id).flatten()
+                for i in range(input_ids.shape[0])
+            ]
+        embed_chunks = []
+        position_chunks = []
+        batch_chunks = []
+        for batch_idx, (embeds, positions) in enumerate(zip(unaligned_inputs_embeds, embedding_positions)):
+            embeds = embeds.to(inputs_embeds)
+            if embeds.ndim == 3 and embeds.shape[1] == 1:
+                embeds = embeds.squeeze(1)
+            positions = positions.to(device=input_ids.device, dtype=torch.long)
+            if len(positions) != len(embeds):
+                raise ValueError(
+                    f"sample {batch_idx}: {len(positions)} embedding tokens but {len(embeds)} graph embeddings"
+                )
+            embed_chunks.append(embeds)
+            position_chunks.append(positions)
+            batch_chunks.append(torch.full_like(positions, batch_idx))
+        if embed_chunks:
+            aligned = self.node_embedding_connect(torch.cat(embed_chunks, dim=0)).to(inputs_embeds.dtype)
+            inputs_embeds[torch.cat(batch_chunks), torch.cat(position_chunks)] = aligned
         kwargs['inputs_embeds'] = inputs_embeds
         return kwargs
 
@@ -135,7 +146,11 @@ class GraphAdapter4CausalLM(nn.Module):
             #    Use standard HF loader on the base directory. This fills 'model.base_model' in-place.
             #    We respect base_map_location if the base is huge.
             #    Note: we must rebuild base_model using .from_pretrained, not from_config:
-            base_model = AutoModelForCausalLM.from_pretrained(base_dir)
+            load_kwargs = {}
+            for key in ("torch_dtype", "attn_implementation"):
+                if key in kwargs and kwargs[key] is not None:
+                    load_kwargs[key] = kwargs[key]
+            base_model = AutoModelForCausalLM.from_pretrained(base_dir, **load_kwargs)
             # model.base_model = AutoModel.from_pretrained(
             #     str(base_dir),
             #     revision=base_revision,
@@ -176,7 +191,11 @@ class GraphAdapter4CausalLM(nn.Module):
             LoRA_dir = kwargs['LoRA_dir'] if 'LoRA_dir' in kwargs.keys() else None
             connector_dim = kwargs['connector_dim'] if 'connector_dim' in kwargs.keys() else 768
             
-            base_model = AutoModelForCausalLM.from_pretrained(base_model_dir)
+            load_kwargs = {}
+            for key in ("torch_dtype", "attn_implementation"):
+                if key in kwargs and kwargs[key] is not None:
+                    load_kwargs[key] = kwargs[key]
+            base_model = AutoModelForCausalLM.from_pretrained(base_model_dir, **load_kwargs)
             model = GraphAdapter4CausalLM(base_model,embedding_mask_id,connector_dim=connector_dim)
             if LoRA_dir is not None:
                 peft_model = PeftModel.from_pretrained(model, LoRA_dir)
@@ -202,6 +221,7 @@ class GraphAdapter4CausalLM(nn.Module):
         # 1) Save your wrapper config
         cfg = self.config.to_dict()
         cfg['embedding_mask_id'] = self.embedding_mask_id
+        cfg['connector_dim'] = self.node_embedding_connect[0].in_features
         if push_config:
             cfg.update(push_config)
         with open(save_dir / CONFIG_NAME, "w", encoding="utf-8") as f:

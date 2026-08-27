@@ -9,3 +9,4 @@ ckpts
 *.ipynb
 eval_outputs
 .vscode
+tests
